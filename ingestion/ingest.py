@@ -217,14 +217,14 @@ class DocumentIngestionPipeline:
                 extract_transactions=True,
                 extract_personal_connections=True,
                 use_llm=True,
-                use_llm_for_companies=False,
-                use_llm_for_technologies=False,
-                use_llm_for_people=False,
-                use_llm_for_financial_entities=False,
-                use_llm_for_corporate_roles=True,  # Only corporate roles use LLM by default
-                use_llm_for_ownership=False,
-                use_llm_for_transactions=False,
-                use_llm_for_personal_connections=False
+                use_llm_for_companies=True,  # Use LLM for companies
+                use_llm_for_technologies=True,  # Use LLM for technologies
+                use_llm_for_people=True,  # Use LLM for people
+                use_llm_for_financial_entities=True,  # Use LLM for financial entities
+                use_llm_for_corporate_roles=True,  # Use LLM for corporate roles
+                use_llm_for_ownership=True,  # Use LLM for ownership
+                use_llm_for_transactions=True,  # Use LLM for transactions
+                use_llm_for_personal_connections=True  # Use LLM for personal connections
             )
 
             # Count entities from document-level extraction (all chunks have same entities)

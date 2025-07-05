@@ -10,6 +10,7 @@ import asyncio
 import re
 import json
 
+from pydantic import BaseModel, Field
 from graphiti_core import Graphiti
 from graphiti_core.llm_client.config import LLMConfig
 from graphiti_core.llm_client.openai_client import OpenAIClient
@@ -33,14 +34,116 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
+# Custom Entity Types for Graphiti
+class Person(BaseModel):
+    """A person entity with biographical and professional information."""
+    age: Optional[int] = Field(None, description="Age of the person in years")
+    occupation: Optional[str] = Field(None, description="Current occupation or job title")
+    location: Optional[str] = Field(None, description="Current location or residence")
+    birth_date: Optional[str] = Field(None, description="Date of birth (flexible format)")
+    education: Optional[str] = Field(None, description="Educational background")
+    company: Optional[str] = Field(None, description="Current employer or company")
+    position: Optional[str] = Field(None, description="Current position or role")
+    department: Optional[str] = Field(None, description="Department or division")
+    start_date: Optional[str] = Field(None, description="Employment start date (flexible format)")
+    nationality: Optional[str] = Field(None, description="Nationality or citizenship")
+    skills: Optional[str] = Field(None, description="Professional skills or expertise")
+
+
+class Company(BaseModel):
+    """A business organization or corporate entity."""
+    industry: Optional[str] = Field(None, description="Primary industry or sector")
+    founded_year: Optional[int] = Field(None, description="Year the company was founded")
+    headquarters: Optional[str] = Field(None, description="Location of headquarters")
+    employee_count: Optional[int] = Field(None, description="Number of employees")
+    revenue: Optional[float] = Field(None, description="Annual revenue in USD")
+    market_cap: Optional[float] = Field(None, description="Market capitalization in USD")
+    ceo: Optional[str] = Field(None, description="Chief Executive Officer")
+    website: Optional[str] = Field(None, description="Company website URL")
+    description: Optional[str] = Field(None, description="Company description or business model")
+    stock_symbol: Optional[str] = Field(None, description="Stock ticker symbol")
+    company_type: Optional[str] = Field(None, description="Type of company (public, private, subsidiary, etc.)")
+    parent_company: Optional[str] = Field(None, description="Parent company if applicable")
+
+
+# Custom Edge Types for Graphiti
+class Employment(BaseModel):
+    """Employment relationship between a person and company."""
+    position: Optional[str] = Field(None, description="Job title or position")
+    start_date: Optional[str] = Field(None, description="Employment start date (flexible format)")
+    end_date: Optional[str] = Field(None, description="Employment end date (flexible format)")
+    salary: Optional[float] = Field(None, description="Annual salary in USD")
+    is_current: Optional[bool] = Field(None, description="Whether employment is current")
+    department: Optional[str] = Field(None, description="Department or division")
+    employment_type: Optional[str] = Field(None, description="Type of employment (full-time, part-time, contract)")
+
+
+class Leadership(BaseModel):
+    """Leadership or executive relationship between a person and company."""
+    role: Optional[str] = Field(None, description="Leadership role (CEO, CTO, Chairman, etc.)")
+    start_date: Optional[str] = Field(None, description="Leadership start date (flexible format)")
+    end_date: Optional[str] = Field(None, description="Leadership end date (flexible format)")
+    is_current: Optional[bool] = Field(None, description="Whether leadership role is current")
+    board_member: Optional[bool] = Field(None, description="Whether person is a board member")
+
+
+class Investment(BaseModel):
+    """Investment relationship between entities."""
+    amount: Optional[float] = Field(None, description="Investment amount in USD")
+    investment_type: Optional[str] = Field(None, description="Type of investment (equity, debt, etc.)")
+    stake_percentage: Optional[float] = Field(None, description="Percentage ownership")
+    investment_date: Optional[str] = Field(None, description="Date of investment (flexible format)")
+    round_type: Optional[str] = Field(None, description="Investment round type (Series A, B, etc.)")
+
+
+class Partnership(BaseModel):
+    """Partnership relationship between companies."""
+    partnership_type: Optional[str] = Field(None, description="Type of partnership")
+    duration: Optional[str] = Field(None, description="Expected duration")
+    deal_value: Optional[float] = Field(None, description="Financial value of partnership")
+    start_date: Optional[str] = Field(None, description="Partnership start date (flexible format)")
+    end_date: Optional[str] = Field(None, description="Partnership end date (flexible format)")
+
+
+class Ownership(BaseModel):
+    """Ownership relationship between entities."""
+    ownership_percentage: Optional[float] = Field(None, description="Percentage of ownership")
+    ownership_type: Optional[str] = Field(None, description="Type of ownership (majority, minority, etc.)")
+    acquisition_date: Optional[str] = Field(None, description="Date of acquisition (flexible format)")
+    acquisition_price: Optional[float] = Field(None, description="Acquisition price in USD")
+
+
 class GraphBuilder:
     """Builds knowledge graph from document chunks."""
 
     def __init__(self):
-        """Initialize graph builder."""
+        """Initialize graph builder with custom entity types."""
         self.graph_client = GraphitiClient()
         self._initialized = False
         self._llm_client = None
+
+        # Define custom entity types for Graphiti
+        self.entity_types = {
+            "Person": Person,
+            "Company": Company
+        }
+
+        # Define custom edge types for Graphiti
+        self.edge_types = {
+            "Employment": Employment,
+            "Leadership": Leadership,
+            "Investment": Investment,
+            "Partnership": Partnership,
+            "Ownership": Ownership
+        }
+
+        # Define edge type mapping for entity relationships
+        self.edge_type_map = {
+            ("Person", "Company"): ["Employment", "Leadership"],
+            ("Company", "Company"): ["Partnership", "Investment", "Ownership"],
+            ("Person", "Person"): ["Partnership"],
+            ("Entity", "Entity"): ["Investment", "Partnership"],  # Fallback for any entity type
+        }
 
         # LLM configuration for entity extraction
         self.llm_api_key = os.getenv("LLM_API_KEY")
@@ -151,13 +254,16 @@ class GraphBuilder:
                             entity_summary[category] = len(items)
                     logger.debug(f"Chunk {chunk.index} entities: {entity_summary}")
 
-                # Add episode to graph
-                logger.debug(f"Adding episode to graph...")
+                # Add episode to graph with custom entity types
+                logger.debug(f"Adding episode to graph with custom Person and Company entity types...")
                 await self.graph_client.add_episode(
                     episode_id=episode_id,
                     content=episode_content,
                     source=source_description,
                     timestamp=datetime.now(timezone.utc),
+                    entity_types=self.entity_types,  # Use custom Person and Company types
+                    edge_types=self.edge_types,      # Use custom edge types
+                    edge_type_map=self.edge_type_map, # Use custom edge type mapping
                     metadata={
                         "document_title": document_title,
                         "document_source": document_source,
@@ -187,10 +293,16 @@ class GraphBuilder:
         result = {
             "episodes_created": episodes_created,
             "total_chunks": len(chunks),
-            "errors": errors
+            "errors": errors,
+            "custom_entity_types_used": True,
+            "entity_types": list(self.entity_types.keys()),
+            "edge_types": list(self.edge_types.keys())
         }
-        
-        logger.info(f"Graph building complete: {episodes_created} episodes created, {len(errors)} errors")
+
+        logger.info(f"Graph building complete: {episodes_created} episodes created with custom Person and Company entity types")
+        logger.info(f"Custom entity types used: {list(self.entity_types.keys())}")
+        logger.info(f"Custom edge types used: {list(self.edge_types.keys())}")
+        logger.info(f"Total errors: {len(result['errors'])}")
         return result
     
     def _prepare_episode_content(
@@ -201,19 +313,20 @@ class GraphBuilder:
     ) -> str:
         """
         Prepare episode content with minimal context to avoid token limits.
-        
+        Enhanced to include entity type information for proper node creation.
+
         Args:
             chunk: Document chunk
             document_title: Title of the document
             document_metadata: Additional metadata
-        
+
         Returns:
-            Formatted episode content (optimized for Graphiti)
+            Formatted episode content (optimized for Graphiti with entity type hints)
         """
         # Limit chunk content to avoid Graphiti's 8192 token limit
-        # Estimate ~4 chars per token, keep content under 6000 chars to leave room for processing
-        max_content_length = 6000
-        
+        # Estimate ~4 chars per token, keep content under 5500 chars to leave room for entity information
+        max_content_length = 5500  # Reduced to leave room for entity information
+
         content = chunk.content
         if len(content) > max_content_length:
             # Truncate content but try to end at a sentence boundary
@@ -223,30 +336,226 @@ class GraphBuilder:
                 truncated.rfind('! '),
                 truncated.rfind('? ')
             )
-            
+
             if last_sentence_end > max_content_length * 0.7:  # If we can keep 70% and end cleanly
                 content = truncated[:last_sentence_end + 1] + " [TRUNCATED]"
             else:
                 content = truncated + "... [TRUNCATED]"
-            
+
             logger.warning(f"Truncated chunk {chunk.index} from {len(chunk.content)} to {len(content)} chars for Graphiti")
-        
-        # Add minimal context (just document title for now)
-        if document_title and len(content) < max_content_length - 100:
-            episode_content = f"[Doc: {document_title[:50]}]\n\n{content}"
-        else:
-            episode_content = content
-        
+
+        # Start building episode content
+        episode_parts = []
+
+        # Add document context
+        if document_title:
+            episode_parts.append(f"[Document: {document_title[:50]}]")
+
+        # Add entity type information to guide Graphiti's node creation
+        if hasattr(chunk, 'metadata') and 'entities' in chunk.metadata:
+            entities = chunk.metadata['entities']
+            entity_hints = []
+
+            # Add person entities with explicit type hints
+            if 'people' in entities and entities['people']:
+                person_list = entities['people'][:10]  # Limit to avoid token overflow
+                entity_hints.append(f"PERSON entities: {', '.join(person_list)}")
+
+            # Add company entities with explicit type hints
+            if 'companies' in entities and entities['companies']:
+                company_list = entities['companies'][:10]  # Limit to avoid token overflow
+                entity_hints.append(f"COMPANY entities: {', '.join(company_list)}")
+
+            # Add corporate roles (these are typically person-related)
+            if 'corporate_roles' in entities and entities['corporate_roles']:
+                for role_type, role_list in entities['corporate_roles'].items():
+                    if role_list:
+                        entity_hints.append(f"PERSON roles ({role_type}): {', '.join(role_list[:5])}")
+
+            if entity_hints:
+                episode_parts.append("[Entity Types for Node Creation]")
+                episode_parts.extend(entity_hints)
+
+        # Add the main content
+        episode_parts.append(content)
+
+        episode_content = "\n\n".join(episode_parts)
+
+        # Final length check
+        if len(episode_content) > 6000:
+            logger.warning(f"Episode content still too long ({len(episode_content)} chars), truncating further")
+            episode_content = episode_content[:5800] + "... [TRUNCATED]"
+
         return episode_content
-    
+
+
+
     def _estimate_tokens(self, text: str) -> int:
         """Rough estimate of token count (4 chars per token)."""
         return len(text) // 4
-    
+
     def _is_content_too_large(self, content: str, max_tokens: int = 7000) -> bool:
         """Check if content is too large for Graphiti processing."""
         return self._estimate_tokens(content) > max_tokens
-    
+
+    def _get_corporate_roles_config(self) -> Dict[str, Any]:
+        """
+        Get configurable corporate roles structure.
+        This can be customized for different types of organizations.
+
+        Returns:
+            Dictionary defining corporate role categories and their descriptions
+        """
+        return {
+            "executive_roles": {
+                "executive_directors": {
+                    "description": "Executive directors with full biographical details including age, tenure, qualifications, and career history",
+                    "format": "**SURNAME** Given Names - Qualifications | Title (aged X, additional details)",
+                    "examples": ["**LUI** Dennis Pok Man - BSc | Executive Deputy Chairman (aged 74, re-designated 11 December 2024)"]
+                },
+                "ceo_coo": {
+                    "description": "Chief executives and operating officers with career progression and experience",
+                    "format": "**SURNAME** Given Names - Qualifications | Title (aged X, since Date)",
+                    "examples": ["**KOO** Sing Fai - BSc Computer Science | Chief Executive Officer (aged 52, since August 2018)"]
+                }
+            },
+            "board_roles": {
+                "chairman": {
+                    "description": "Chairman with executive/non-executive status, age, and appointment history",
+                    "format": "**SURNAME** Given Names - Qualifications | Title (aged X, since Date)",
+                    "examples": ["**FOK** Kin Ning, Canning - BA, DFM, FCA (ANZ) | Chairman and Non-executive Director (aged 73, since March 2009)"]
+                },
+                "deputy_chairman": {
+                    "description": "Deputy chairmen with re-designation dates and previous roles",
+                    "format": "**SURNAME** Given Names - Qualifications | Title (re-designated Date)",
+                    "examples": ["**LUI** Dennis Pok Man - BSc | Executive Deputy Chairman (re-designated 11 December 2024)"]
+                },
+                "non_executive_directors": {
+                    "description": "Non-executive directors with complete profiles including other board positions",
+                    "format": "**SURNAME** Given Names - Qualifications | Title (aged X)",
+                    "examples": ["**WOO** Chiu Man, Cliff - BSc, Diploma in Management | Non-executive Deputy Chairman (aged 71)"]
+                },
+                "independent_directors": {
+                    "description": "Independent non-executive directors with professional background and committee roles",
+                    "format": "**SURNAME** Given Names - Qualifications | Title (aged X, since Date)",
+                    "examples": ["**CHAN** Tze Leung - BSc(Econ), MBA, FHKIOD | Independent Non-executive Director (aged 78, since 9 May 2024)"]
+                }
+            },
+            "management_roles": {
+                "company_secretaries": {
+                    "description": "Company secretaries with legal qualifications and tenure",
+                    "format": "**SURNAME** Given Names - Qualifications | Title (Service period)",
+                    "examples": ["**SHIH** Edith - BSc, MA, MA, EdM, Solicitor, FCG, HKFCG | Former Company Secretary (November 2007 to May 2023)"]
+                },
+                "other_roles": {
+                    "description": "Management team, alternates, and special positions",
+                    "format": "**SURNAME** Given Names - Qualifications | Title (aged X, since Date)",
+                    "examples": [
+                        "**NG** Marcus Byron - BSc Accounting, CPA | Chief Financial Officer (aged 41, since April 2023)",
+                        "**LEONG** Bing Yow - BEng | Chief Technology Officer (aged 41, since January 2023)"
+                    ]
+                }
+            },
+            "governance_structures": {
+                "board_committees": {
+                    "description": "Extract all committee structures with member names and roles",
+                    "format": "Committee Name: **CHAIRMAN** Name (Chairman), **MEMBER** Name (member)",
+                    "examples": [
+                        "Audit Committee: **CHAN** Tze Leung (Chairman), **IM** Man Ieng (member)",
+                        "Remuneration Committee: **IP** Yuk Keung (Chairman since 9 May 2024)"
+                    ]
+                },
+                "auditors": {
+                    "description": "External auditors with full firm names and certifications",
+                    "format": "Firm Name - Certifications and registrations",
+                    "examples": ["PricewaterhouseCoopers - Certified Public Accountants, Registered Public Interest Entity Auditor"]
+                }
+            }
+        }
+
+    def _generate_corporate_roles_prompt(self, config: Dict[str, Any]) -> str:
+        """
+        Generate corporate roles extraction prompt from configuration.
+
+        Args:
+            config: Corporate roles configuration dictionary
+
+        Returns:
+            Formatted prompt string for corporate roles extraction
+        """
+        prompt_parts = []
+
+        for category_name, category_data in config.items():
+            prompt_parts.append(f"\n{category_name.upper().replace('_', ' ')}:")
+
+            for role_name, role_data in category_data.items():
+                prompt_parts.append(f"- {role_name}: {role_data['description']}")
+                if 'format' in role_data:
+                    prompt_parts.append(f"  * Format: \"{role_data['format']}\"")
+                if 'examples' in role_data and role_data['examples']:
+                    prompt_parts.append(f"  * Examples:")
+                    for example in role_data['examples'][:2]:  # Limit to 2 examples
+                        prompt_parts.append(f"    - \"{example}\"")
+
+        return "\n".join(prompt_parts)
+
+    def _generate_corporate_roles_json_structure(self, config: Dict[str, Any]) -> str:
+        """
+        Generate JSON structure for corporate roles from configuration.
+
+        Args:
+            config: Corporate roles configuration dictionary
+
+        Returns:
+            JSON structure string with examples
+        """
+        json_parts = ['    "corporate_roles": {']
+
+        all_roles = []
+        for category_data in config.values():
+            all_roles.extend(category_data.keys())
+
+        for i, role_name in enumerate(all_roles):
+            # Find the role in config to get examples
+            example_data = None
+            for category_data in config.values():
+                if role_name in category_data:
+                    example_data = category_data[role_name]
+                    break
+
+            if example_data and 'examples' in example_data:
+                examples = example_data['examples'][:1]  # Use first example
+                json_parts.append(f'        "{role_name}": {examples},')
+            else:
+                json_parts.append(f'        "{role_name}": ["example_{role_name}"],')
+
+        json_parts.append('    },')
+
+        return '\n'.join(json_parts)
+
+    def customize_corporate_roles_config(self, custom_config: Dict[str, Any]) -> None:
+        """
+        Customize the corporate roles configuration for specific organization types.
+
+        Args:
+            custom_config: Custom configuration to override defaults
+
+        Example:
+            # For a non-profit organization
+            custom_config = {
+                "leadership_roles": {
+                    "board_chair": {"description": "Board chairperson", "format": "**NAME** - Title"},
+                    "executive_director": {"description": "Executive director", "format": "**NAME** - Title"}
+                },
+                "governance": {
+                    "trustees": {"description": "Board trustees", "format": "**NAME** - Title"},
+                    "advisors": {"description": "Advisory board", "format": "**NAME** - Title"}
+                }
+            }
+        """
+        self._custom_corporate_roles_config = custom_config
+        logger.info(f"Customized corporate roles configuration with {len(custom_config)} categories")
+
     async def extract_entities_from_document(
         self,
         chunks: List[DocumentChunk],
@@ -257,7 +566,16 @@ class GraphBuilder:
         extract_corporate_roles: bool = True,
         extract_ownership: bool = True,
         extract_transactions: bool = True,
-        extract_personal_connections: bool = True
+        extract_personal_connections: bool = True,
+        use_llm: bool = True,
+        use_llm_for_companies: bool = False,
+        use_llm_for_technologies: bool = False,
+        use_llm_for_people: bool = False,
+        use_llm_for_financial_entities: bool = False,
+        use_llm_for_corporate_roles: bool = True,
+        use_llm_for_ownership: bool = False,
+        use_llm_for_transactions: bool = False,
+        use_llm_for_personal_connections: bool = False
     ) -> List[DocumentChunk]:
         """
         Extract entities from the entire document content (all chunks combined) using LLM.
@@ -266,6 +584,8 @@ class GraphBuilder:
         Args:
             chunks: List of document chunks
             extract_*: Boolean flags for each entity type
+            use_llm: Whether to use LLM for entity extraction
+            use_llm_for_*: Boolean flags for using LLM for specific entity types
 
         Returns:
             Chunks with shared entity metadata added to all chunks
@@ -332,11 +652,18 @@ class GraphBuilder:
 
         logger.debug(f"Processing entire document with {document_length} characters")
 
-        # Extract entities using a mix of LLM and rule-based methods based on flags
-        if any(llm_usage.values()):
-            # Some entities need LLM extraction
+        # Use LLM for all entity extraction (no more rule-based extraction)
+        if not self._llm_client:
+            logger.error("No LLM client available for entity extraction")
+            raise ValueError("LLM client is required for entity extraction")
+
+        logger.info("Document-level extraction - Using LLM for all entity types")
+
+        # Extract entities using LLM only
+        if self._llm_client:
+            # Extract entities using LLM
             try:
-                logger.debug(f"Using LLM extraction for document-level types: {llm_types}")
+                logger.debug("Using LLM extraction for all document-level entity types")
 
                 # Split large documents into 50,000 character chunks for LLM processing
                 if document_length > 50000:
@@ -367,10 +694,10 @@ class GraphBuilder:
 
                 logger.debug(f"LLM extraction completed for entire document")
 
-                # Filter and merge LLM results based on usage flags
+                # Use all LLM results since we're using LLM for all entity types
                 used_entities = {}
                 for category, items in llm_entities.items():
-                    if category in document_entities and llm_usage.get(category, False):
+                    if category in document_entities:
                         used_entities[category] = items
                         if isinstance(document_entities[category], dict) and isinstance(items, dict):
                             for subcategory, subitems in items.items():
@@ -394,24 +721,12 @@ class GraphBuilder:
                     logger.info(f"No LLM entities used for document (all filtered out)")
 
             except Exception as e:
-                logger.warning(f"LLM entity extraction failed for document: {e}. Falling back to rule-based extraction.")
-                # Fall back to rule-based extraction for failed LLM types
-                llm_usage = {k: False for k in llm_usage.keys()}  # Disable LLM for this document
+                logger.error(f"LLM entity extraction failed for document: {e}")
+                raise ValueError(f"Entity extraction failed: {e}")
 
-        # Use rule-based extraction for remaining entity types
-        logger.debug(f"Using rule-based extraction for document-level types: {[k for k, v in llm_usage.items() if not v]}")
-        document_entities = await self._extract_entities_rule_based(
-            full_document_content,
-            document_entities,
-            extract_companies and not llm_usage.get('companies', False),
-            extract_technologies and not llm_usage.get('technologies', False),
-            extract_people and not llm_usage.get('people', False),
-            extract_financial_entities and not llm_usage.get('financial_entities', False),
-            extract_corporate_roles and not llm_usage.get('corporate_roles', False),
-            extract_ownership and not llm_usage.get('ownership', False),
-            extract_transactions and not llm_usage.get('transactions', False),
-            extract_personal_connections and not llm_usage.get('personal_connections', False)
-        )
+        else:
+            logger.error("No LLM client available for entity extraction")
+            raise ValueError("LLM client is required for entity extraction")
 
         # Apply the same entities to all chunks
         enriched_chunks = []
@@ -494,24 +809,12 @@ class GraphBuilder:
         if not self._initialized:
             await self.initialize()
 
-        # Determine which entity types will use LLM
-        llm_usage = {
-            'companies': use_llm_for_companies and use_llm and self._llm_client,
-            'technologies': use_llm_for_technologies and use_llm and self._llm_client,
-            'people': use_llm_for_people and use_llm and self._llm_client,
-            'financial_entities': use_llm_for_financial_entities and use_llm and self._llm_client,
-            'corporate_roles': use_llm_for_corporate_roles and use_llm and self._llm_client,
-            'ownership': use_llm_for_ownership and use_llm and self._llm_client,
-            'transactions': use_llm_for_transactions and use_llm and self._llm_client,
-            'personal_connections': use_llm_for_personal_connections and use_llm and self._llm_client
-        }
+        # Use LLM for all entity extraction (no more rule-based extraction)
+        if not self._llm_client:
+            logger.error("No LLM client available for entity extraction")
+            raise ValueError("LLM client is required for entity extraction")
 
-        llm_types = [k for k, v in llm_usage.items() if v]
-        rule_types = [k for k, v in llm_usage.items() if not v]
-
-        logger.info(f"Extracting entities from {len(chunks)} chunks")
-        logger.info(f"LLM-based extraction for: {llm_types if llm_types else 'None'}")
-        logger.info(f"Rule-based extraction for: {rule_types if rule_types else 'None'}")
+        logger.info(f"Extracting entities from {len(chunks)} chunks using LLM only")
 
         enriched_chunks = []
 
@@ -568,11 +871,11 @@ class GraphBuilder:
 
             logger.debug(f"Processing chunk {chunk.index} with {len(content)} characters")
 
-            # Extract entities using a mix of LLM and rule-based methods based on flags
-            if any(llm_usage.values()):
-                # Some entities need LLM extraction
+            # Extract entities using LLM only
+            if self._llm_client:
+                # Extract entities using LLM
                 try:
-                    logger.debug(f"Using LLM extraction for chunk {chunk.index} for types: {llm_types}")
+                    logger.debug(f"Using LLM extraction for chunk {chunk.index} for all entity types")
                     llm_entities = await self._extract_entities_with_llm(
                         content,
                         extract_companies=extract_companies and use_llm_for_companies,
@@ -587,10 +890,10 @@ class GraphBuilder:
 
                     logger.debug(f"LLM extraction completed for chunk {chunk.index}")
 
-                    # Filter and merge LLM results based on usage flags
+                    # Use all LLM results since we're using LLM for all entity types
                     used_entities = {}
                     for category, items in llm_entities.items():
-                        if category in entities and llm_usage.get(category, False):
+                        if category in entities:
                             used_entities[category] = items
                             if isinstance(entities[category], dict) and isinstance(items, dict):
                                 for subcategory, subitems in items.items():
@@ -614,24 +917,12 @@ class GraphBuilder:
                         logger.info(f"No LLM entities used for chunk {chunk.index} (all filtered out)")
 
                 except Exception as e:
-                    logger.warning(f"LLM entity extraction failed for chunk {chunk.index}: {e}. Falling back to rule-based extraction.")
-                    # Fall back to rule-based extraction for failed LLM types
-                    llm_usage = {k: False for k in llm_usage.keys()}  # Disable LLM for this chunk
+                    logger.error(f"LLM entity extraction failed for chunk {chunk.index}: {e}")
+                    raise ValueError(f"Entity extraction failed for chunk {chunk.index}: {e}")
 
-            # Use rule-based extraction for remaining entity types
-            logger.debug(f"Using rule-based extraction for chunk {chunk.index} for types: {[k for k, v in llm_usage.items() if not v]}")
-            entities = await self._extract_entities_rule_based(
-                content,
-                entities,
-                extract_companies and not llm_usage.get('companies', False),
-                extract_technologies and not llm_usage.get('technologies', False),
-                extract_people and not llm_usage.get('people', False),
-                extract_financial_entities and not llm_usage.get('financial_entities', False),
-                extract_corporate_roles and not llm_usage.get('corporate_roles', False),
-                extract_ownership and not llm_usage.get('ownership', False),
-                extract_transactions and not llm_usage.get('transactions', False),
-                extract_personal_connections and not llm_usage.get('personal_connections', False)
-            )
+            else:
+                logger.error("No LLM client available for entity extraction")
+                raise ValueError("LLM client is required for entity extraction")
             
             # Create enriched chunk
             enriched_chunk = DocumentChunk(
@@ -1171,10 +1462,10 @@ TECHNOLOGIES: Extract technology terms, software, platforms, and technical conce
             prompt += """
 PEOPLE: Extract individual person names only - NOT company names or organizations.
 - Include: Individual human beings, executives, employees, board members
-- Format: Full person names (e.g., "John Smith", "Mary Johnson", "Dr. Sarah Wilson")
+- Format: Full person names (e.g., "Michael Chen", "Sarah Wong", "Dr. David Lee")
 - Look for: titles like Mr., Mrs., Dr., Prof., or role-based context
 - Exclude: Company names, organization names, group entities
-- Separate person names from their titles/qualifications (extract "John Smith" not "John Smith, CEO")
+- Separate person names from their titles/qualifications (extract "Michael Chen" not "Michael Chen, CEO")
 """
             requested_categories.append("people")
 
@@ -1190,9 +1481,15 @@ FINANCIAL_ENTITIES:
             requested_categories.append("financial_entities")
 
         if extract_corporate_roles:
-            prompt += """
+            # Get corporate roles configuration (use custom if available)
+            if hasattr(self, '_custom_corporate_roles_config'):
+                corporate_roles_config = self._custom_corporate_roles_config
+            else:
+                corporate_roles_config = self._get_corporate_roles_config()
+
+            prompt += f"""
 CORPORATE_ROLES:
-Extract comprehensive director and management information from biographical profiles with detailed formatting:
+Extract comprehensive organizational roles and management information with detailed formatting:
 
 FORMAT REQUIREMENTS:
 - Separate person names from their qualifications/credentials
@@ -1327,27 +1624,13 @@ Return a valid JSON object with ONLY the categories that were requested above. "
     },\n'''
 
         if "corporate_roles" in requested_categories:
-            json_structure += '''    "corporate_roles": {
-        "executive_directors": ["**LUI** Dennis Pok Man - BSc | Executive Deputy Chairman (aged 74, re-designated 11 December 2024)"],
-        "non_executive_directors": ["**WOO** Chiu Man, Cliff - BSc, Diploma in Management | Non-executive Deputy Chairman (aged 71)"],
-        "independent_directors": ["**CHAN** Tze Leung - BSc(Econ), MBA, FHKIOD | Independent Non-executive Director (aged 78, since 9 May 2024)"],
-        "chairman": ["**FOK** Kin Ning, Canning - BA, DFM, FCA (ANZ) | Chairman and Non-executive Director (aged 73, since March 2009)"],
-        "deputy_chairman": ["**LUI** Dennis Pok Man - BSc | Executive Deputy Chairman (re-designated 11 December 2024)"],
-        "ceo_coo": ["**KOO** Sing Fai - BSc Computer Science | Chief Executive Officer (aged 52, since August 2018)"],
-        "company_secretaries": ["**SHIH** Edith - BSc, MA, MA, EdM, Solicitor, FCG, HKFCG | Former Company Secretary (November 2007 to May 2023)"],
-        "board_committees": [
-            "Audit Committee: **CHAN** Tze Leung (Chairman), **IM** Man Ieng (member)",
-            "Remuneration Committee: **IP** Yuk Keung (Chairman since 9 May 2024)",
-            "Nomination Committee: **CHAN** Tze Leung (Chairman), **IP** Yuk Keung (member)",
-            "Sustainability Committee: **SHIH** Edith (Chairman since July 2020)"
-        ],
-        "auditors": ["PricewaterhouseCoopers - Certified Public Accountants, Registered Public Interest Entity Auditor"],
-        "other_roles": [
-            "**NG** Marcus Byron - BSc Accounting, CPA | Chief Financial Officer (aged 41, since April 2023)",
-            "**LEONG** Bing Yow - BEng | Chief Technology Officer (aged 41, since January 2023)",
-            "**LAI** Kai Ming, Dominic - BSc(Hons), MBA | Alternate to **FOK** Kin Ning, Canning and **SHIH** Edith"
-        ]
-    },\n'''
+            # Get corporate roles configuration (use custom if available)
+            if hasattr(self, '_custom_corporate_roles_config'):
+                corporate_roles_config = self._custom_corporate_roles_config
+            else:
+                corporate_roles_config = self._get_corporate_roles_config()
+
+            json_structure += self._generate_corporate_roles_json_structure(corporate_roles_config)
 
         if "ownership" in requested_categories:
             json_structure += '''    "ownership": {
@@ -1395,885 +1678,58 @@ IMPORTANT:
 
         return prompt
 
-    async def _extract_entities_rule_based(
-        self,
-        content: str,
-        entities: Dict[str, Any],
-        extract_companies: bool,
-        extract_technologies: bool,
-        extract_people: bool ,
-        extract_financial_entities: bool = True,
-        extract_corporate_roles: bool = True,
-        extract_ownership: bool = True,
-        extract_transactions: bool = True,
-        extract_personal_connections: bool = True
-    ) -> Dict[str, Any]:
-        """
-        Extract entities using rule-based methods as fallback.
+    # Rule-based extraction methods removed - LLM-only extraction now used
 
-        Args:
-            content: Text content to analyze
-            entities: Entity structure to populate
-            extract_*: Boolean flags for extraction
-
-        Returns:
-            Updated entities dictionary
-        """
-        import time
-        start_time = time.time()
-
-        # Log rule-based extraction request
-        requested_types = []
-        if extract_companies: requested_types.append("companies")
-        if extract_technologies: requested_types.append("technologies")
-        if extract_people: requested_types.append("people")
-        if extract_financial_entities: requested_types.append("financial_entities")
-        if extract_corporate_roles: requested_types.append("corporate_roles")
-        if extract_ownership: requested_types.append("ownership")
-        if extract_transactions: requested_types.append("transactions")
-        if extract_personal_connections: requested_types.append("personal_connections")
-
-        logger.info(f"Starting rule-based entity extraction for types: {requested_types}")
-        logger.debug(f"Rule-based extraction starting for content length: {len(content)}")
-
-        # Extract basic entities using existing rule-based methods with enhanced logging
-        if extract_companies:
-            companies_start = time.time()
-            entities["companies"] = self._extract_companies(content)
-            companies_time = time.time() - companies_start
-
-            # Validate companies are organizations, not people
-            validated_companies = self._filter_organizations_from_people(entities["companies"])
-            entities["companies"] = validated_companies
-
-            logger.info(f"Rule-based companies extracted: {len(entities['companies'])} in {companies_time:.3f}s")
-            logger.debug(f"Companies found: {entities['companies'][:5]}{'...' if len(entities['companies']) > 5 else ''}")
-
-        if extract_technologies:
-            tech_start = time.time()
-            entities["technologies"] = self._extract_technologies(content)
-            tech_time = time.time() - tech_start
-            logger.info(f"Rule-based technologies extracted: {len(entities['technologies'])} in {tech_time:.3f}s")
-            logger.debug(f"Technologies found: {entities['technologies'][:5]}{'...' if len(entities['technologies']) > 5 else ''}")
-
-        if extract_people:
-            people_start = time.time()
-            entities["people"] = self._extract_people(content)
-            people_time = time.time() - people_start
-
-            # Validate people are individuals, not organizations
-            validated_people = self._filter_people_from_organizations(entities["people"])
-            entities["people"] = validated_people
-
-            logger.info(f"Rule-based people extracted: {len(entities['people'])} in {people_time:.3f}s")
-            logger.debug(f"People found: {entities['people'][:5]}{'...' if len(entities['people']) > 5 else ''}")
-
-        # Extract locations
-        locations_start = time.time()
-        entities["locations"] = self._extract_locations(content)
-        locations_time = time.time() - locations_start
-        logger.info(f"Rule-based locations extracted: {len(entities['locations'])} in {locations_time:.3f}s")
-        logger.debug(f"Locations found: {entities['locations'][:5]}{'...' if len(entities['locations']) > 5 else ''}")
-
-        # For new entity types, use basic pattern matching as fallback
-        if extract_financial_entities:
-            entities["financial_entities"] = self._extract_financial_entities_rule_based(content)
-            logger.debug(f"Rule-based financial entities extracted")
-
-        if extract_corporate_roles:
-            entities["corporate_roles"] = self._extract_corporate_roles_rule_based(content)
-            logger.debug(f"Rule-based corporate roles extracted")
-
-        if extract_ownership:
-            entities["ownership"] = self._extract_ownership_rule_based(content)
-            logger.debug(f"Rule-based ownership extracted")
-
-        if extract_transactions:
-            entities["transactions"] = self._extract_transactions_rule_based(content)
-            logger.debug(f"Rule-based transactions extracted")
-
-        if extract_personal_connections:
-            entities["personal_connections"] = self._extract_personal_connections_rule_based(content)
-            logger.debug(f"Rule-based personal connections extracted")
-
-        entities["network_entities"] = self._extract_network_entities_rule_based(content)
-        logger.debug(f"Rule-based network entities extracted: {len(entities['network_entities'])}")
-
-        # Log total rule-based extraction time
-        total_time = time.time() - start_time
-        logger.info(f"Rule-based entity extraction completed in {total_time:.3f}s")
-
-        return entities
-
-    def _filter_organizations_from_people(self, entities: List[str]) -> List[str]:
-        """Filter out person names from organization entities."""
-        filtered = []
-        person_indicators = ['mr', 'mrs', 'ms', 'dr', 'prof', 'sir', 'dame']
-
-        for entity in entities:
-            entity_lower = entity.lower()
-            is_person = False
-
-            # Check for person titles
-            for indicator in person_indicators:
-                if entity_lower.startswith(indicator + ' ') or entity_lower.startswith(indicator + '.'):
-                    is_person = True
-                    logger.debug(f"Filtered out person from companies: {entity}")
-                    break
-
-            # Check for typical person name patterns (avoid false positives)
-            words = entity.split()
-            if len(words) == 2 and all(word[0].isupper() and word[1:].islower() for word in words):
-                # Could be a person name, but keep if it has clear org indicators
-                org_suffixes = ['inc', 'corp', 'ltd', 'llc', 'ag', 'se', 'sa', 'plc']
-                has_org_suffix = any(entity_lower.endswith(' ' + suffix) for suffix in org_suffixes)
-                if not has_org_suffix:
-                    is_person = True
-                    logger.debug(f"Filtered out potential person name from companies: {entity}")
-
-            if not is_person:
-                filtered.append(entity)
-
-        return filtered
-
-    def _filter_people_from_organizations(self, entities: List[str]) -> List[str]:
-        """Filter out organization names from people entities."""
-        filtered = []
-        org_indicators = ['inc', 'corp', 'corporation', 'ltd', 'limited', 'llc', 'ag', 'se', 'sa', 'plc', 'gmbh']
-        org_types = ['company', 'corporation', 'group', 'holdings', 'enterprises', 'industries']
-
-        for entity in entities:
-            entity_lower = entity.lower()
-            is_organization = False
-
-            # Check for organization suffixes
-            for indicator in org_indicators:
-                if entity_lower.endswith(' ' + indicator) or entity_lower.endswith(',' + indicator):
-                    is_organization = True
-                    logger.debug(f"Filtered out organization from people: {entity}")
-                    break
-
-            # Check for organization types
-            if not is_organization:
-                for org_type in org_types:
-                    if org_type in entity_lower:
-                        is_organization = True
-                        logger.debug(f"Filtered out organization type from people: {entity}")
-                        break
-
-            if not is_organization:
-                filtered.append(entity)
-
-        return filtered
-
-    def _extract_financial_entities_rule_based(self, text: str) -> Dict[str, List[str]]:
-        """Extract financial entities using rule-based patterns."""
-        financial_entities = {
-            "company_secretaries": [],
-            "payees": [],
-            "document_issuers": [],
-            "target_issuers": [],
-            "target_companies": []
-        }
-
-        # Company Secretary patterns
-        secretary_patterns = [
-            r'(?:company secretary|corporate secretary)\s*:?\s*([A-Z][A-Za-z\s&.,]+)',
-            r'([A-Z][A-Za-z\s&.,]+)\s+(?:as|is|was|acting as)?\s*(?:company|corporate)\s+secretary',
-            r'secretary\s*:?\s*([A-Z][A-Za-z\s&.,]+)'
-        ]
-
-        # Payee patterns
-        payee_patterns = [
-            r'(?:payee|paid to|payment to|beneficiary)\s*:?\s*([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)',
-            r'(?:remit to|transfer to|wire to)\s*:?\s*([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)',
-            r'(?:in favor of|in favour of)\s*:?\s*([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)'
-        ]
-
-        # Document Issuer patterns
-        issuer_patterns = [
-            r'(?:issued by|issuer|issued from)\s*:?\s*([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)',
-            r'([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)\s+(?:issued|has issued|hereby issues)'
-        ]
-
-        # Target patterns
-        target_patterns = [
-            r'(?:target|target company|target issuer)\s*:?\s*([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)',
-            r'(?:acquisition of|acquiring|takeover of)\s*([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)'
-        ]
-
-        # Extract entities using patterns
-        for pattern in secretary_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            financial_entities["company_secretaries"].extend([match.strip() for match in matches if match.strip()])
-
-        for pattern in payee_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            financial_entities["payees"].extend([match.strip() for match in matches if match.strip()])
-
-        for pattern in issuer_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            financial_entities["document_issuers"].extend([match.strip() for match in matches if match.strip()])
-
-        for pattern in target_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            financial_entities["target_issuers"].extend([match.strip() for match in matches if match.strip()])
-            financial_entities["target_companies"].extend([match.strip() for match in matches if match.strip()])
-
-        # Remove duplicates
-        for key in financial_entities:
-            financial_entities[key] = list(set(financial_entities[key]))
-
-        return financial_entities
-
-    def _extract_corporate_roles_rule_based(self, text: str) -> Dict[str, List[str]]:
-        """Extract corporate roles using rule-based patterns."""
-        corporate_roles = {
-            "executive_directors": [],
-            "non_executive_directors": [],
-            "independent_directors": [],
-            "chairman": [],
-            "deputy_chairman": [],
-            "ceo_coo": [],
-            "company_secretaries": [],
-            "board_committees": [],
-            "auditors": [],
-            "other_roles": []
-        }
-
-        # Enhanced patterns for biographical and management extraction
-
-        # Biographical header patterns (extract from detailed profiles)
-        biographical_patterns = [
-            r'# ([A-Z][A-Za-z\s,.\(\)]+)\s*\n\s*([A-Za-z\s]+(?:Director|Chairman|Officer))\s*\n\s*([A-Za-z\s,.\(\)]+),\s*aged\s+(\d+),\s*has\s+been\s+([^.]+)',
-            r'([A-Z][A-Za-z\s,.\(\)]+),\s*aged\s+(\d+),\s*has\s+been\s+([^.]+)\s+since\s+([^.]+)',
-        ]
-
-        # Executive Director patterns (enhanced for biographical data)
-        executive_director_patterns = [
-            r'# ([A-Z][A-Za-z\s,.\(\)]+)\s*\n\s*Executive\s+(?:Deputy\s+)?(?:Chairman|Director)',
-            r'([A-Z][A-Za-z\s,.\(\)]+),\s*aged\s+(\d+),\s*has\s+been\s+[^.]*Executive\s+(?:Deputy\s+)?(?:Chairman|Director)',
-            r'Mr\s+([A-Z][A-Za-z\s,.\(\)]+)\s*\(Executive\s+Deputy\s+Chairman\)',
-            r'([A-Z][A-Za-z\s,.\(\)]+)\s*(?:\([0-9]+\))?\s*(?:,\s*[A-Za-z\s,]+)?\s*\|\s*Executive\s+(?:Deputy\s+)?(?:Chairman|Director)',
-        ]
-
-        # Non-Executive Director patterns
-        non_executive_director_patterns = [
-            r'# ([A-Z][A-Za-z\s,.\(\)]+)\s*\n\s*(?:Chairman\s+and\s+)?Non-executive\s+(?:Deputy\s+)?Director',
-            r'([A-Z][A-Za-z\s,.\(\)]+),\s*aged\s+(\d+),\s*has\s+been\s+[^.]*Non-executive\s+(?:Deputy\s+)?Director',
-            r'Mr\s+([A-Z][A-Za-z\s,.\(\)]+)\s*\(Non-executive\s+Deputy\s+Chairman\)',
-        ]
-
-        # Independent Director patterns
-        independent_director_patterns = [
-            r'# ([A-Z][A-Za-z\s,.\(\)]+)\s*\n\s*Independent\s+Non-executive\s+Director',
-            r'([A-Z][A-Za-z\s,.\(\)]+),\s*aged\s+(\d+),\s*has\s+been\s+an\s+Independent\s+Non-executive\s+Director',
-            r'Mr\s+([A-Z][A-Za-z\s,.\(\)]+)\s*Independent\s+Non-executive\s+Director',
-            r'Ms\s+([A-Z][A-Za-z\s,.\(\)]+)\s*Independent\s+Non-executive\s+Director',
-        ]
-
-        # Chairman patterns (enhanced)
-        chairman_patterns = [
-            r'# ([A-Z][A-Za-z\s,.\(\)]+)\s*\n\s*Chairman\s+and\s+Non-executive\s+Director',
-            r'([A-Z][A-Za-z\s,.\(\)]+),\s*aged\s+(\d+),\s*has\s+been\s+Chairman',
-            r'Mr\s+([A-Z][A-Za-z\s,.\(\)]+)\s*Chairman\s+and\s+Non-executive\s+Director',
-        ]
-
-        # Deputy Chairman patterns
-        deputy_chairman_patterns = [
-            r'([A-Z][A-Za-z\s,.\(\)]+)\s*(?:\([0-9]+\))?\s*(?:,\s*[A-Za-z\s,]+)?\s*\|\s*(?:Executive|Non-executive)\s+Deputy\s+Chairman',
-            r'([A-Z][A-Za-z\s,.\(\)]+),\s*aged\s+(\d+),\s*[^.]*re-designated\s+as\s+(?:Executive|Non-executive)\s+Deputy\s+Chairman',
-        ]
-
-        # CEO/COO patterns (enhanced)
-        ceo_coo_patterns = [
-            r'# ([A-Z][A-Za-z\s,.\(\)]+)\s*\n\s*(?:Executive\s+Director\s+and\s+)?Chief\s+(?:Executive|Operating)\s+Officer',
-            r'([A-Z][A-Za-z\s,.\(\)]+),\s*aged\s+(\d+),\s*has\s+been\s+[^.]*Chief\s+(?:Executive|Operating)\s+Officer',
-            r'Mr\s+([A-Z][A-Za-z\s,.\(\)]+)\s*\(Chief\s+(?:Executive|Operating)\s+Officer\)',
-        ]
-
-        # Management team patterns
-        management_patterns = [
-            r'# ([A-Z][A-Za-z\s,.\(\)]+)\s*\n\s*Chief\s+(?:Financial|Technology)\s+Officer',
-            r'([A-Z][A-Za-z\s,.\(\)]+),\s*aged\s+(\d+),\s*has\s+been\s+Chief\s+(?:Financial|Technology)\s+Officer',
-        ]
-
-        # Committee patterns (enhanced for biographical extraction)
-        committee_patterns = [
-            r'([A-Z][A-Za-z\s,.\(\)]+)[^.]*Chairman\s+of\s+the\s+([A-Za-z\s]+Committee)',
-            r'([A-Z][A-Za-z\s,.\(\)]+)[^.]*(?:member|Chairman)\s+of\s+the\s+([A-Za-z\s]+Committee)\s+since\s+([^.]+)',
-            r'(Audit|Remuneration|Nomination|Sustainability)\s+Committee:\s*([A-Z][A-Za-z\s,.\(\)]+(?:\s*\([^)]+\))?(?:\s*,\s*[A-Z][A-Za-z\s,.\(\)]+)*)',
-        ]
-
-        # Company Secretary patterns
-        secretary_patterns = [
-            r'# Company Secretary[^#]*?([A-Z][A-Za-z\s,.\(\)]+)',
-            r'Company Secretary[^A-Z]*([A-Z][A-Za-z\s,.\(\)]+)',
-            r'([A-Z][A-Za-z\s,.\(\)]+)\s*(?:-\s*)?Company Secretary'
-        ]
-
-        # Auditor patterns
-        auditor_patterns = [
-            r'# Auditor[^#]*?([A-Z][A-Za-z\s,.\(\)]+(?:\s*Certified Public Accountants)?)',
-            r'Auditor[^A-Z]*([A-Z][A-Za-z\s,.\(\)]+)',
-            r'(PricewaterhouseCoopers|Deloitte|KPMG|Ernst & Young|BDO|Grant Thornton|RSM|Mazars|PKF|Moore Stephens)[^#]*?Certified Public Accountants'
-        ]
-
-        # Extract entities using enhanced biographical patterns
-        for pattern in executive_director_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
-            # Handle both simple matches and tuple matches (with age, etc.)
-            for match in matches:
-                if isinstance(match, tuple):
-                    corporate_roles["executive_directors"].append(match[0].strip())
-                else:
-                    corporate_roles["executive_directors"].append(match.strip())
-
-        for pattern in non_executive_director_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
-            for match in matches:
-                if isinstance(match, tuple):
-                    corporate_roles["non_executive_directors"].append(match[0].strip())
-                else:
-                    corporate_roles["non_executive_directors"].append(match.strip())
-
-        for pattern in independent_director_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
-            for match in matches:
-                if isinstance(match, tuple):
-                    corporate_roles["independent_directors"].append(match[0].strip())
-                else:
-                    corporate_roles["independent_directors"].append(match.strip())
-
-        for pattern in chairman_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
-            for match in matches:
-                if isinstance(match, tuple):
-                    corporate_roles["chairman"].append(match[0].strip())
-                else:
-                    corporate_roles["chairman"].append(match.strip())
-
-        for pattern in deputy_chairman_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
-            for match in matches:
-                if isinstance(match, tuple):
-                    corporate_roles["deputy_chairman"].append(match[0].strip())
-                else:
-                    corporate_roles["deputy_chairman"].append(match.strip())
-
-        for pattern in ceo_coo_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
-            for match in matches:
-                if isinstance(match, tuple):
-                    corporate_roles["ceo_coo"].append(match[0].strip())
-                else:
-                    corporate_roles["ceo_coo"].append(match.strip())
-
-        for pattern in management_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
-            for match in matches:
-                if isinstance(match, tuple):
-                    corporate_roles["other_roles"].append(match[0].strip())
-                else:
-                    corporate_roles["other_roles"].append(match.strip())
-
-        for pattern in committee_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
-            for match in matches:
-                if isinstance(match, tuple) and len(match) >= 2:
-                    committee_info = f"{match[1].strip()}: {match[0].strip()}"
-                    corporate_roles["board_committees"].append(committee_info)
-                else:
-                    corporate_roles["board_committees"].append(str(match).strip())
-
-        for pattern in secretary_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            corporate_roles["company_secretaries"].extend([match.strip() for match in matches if match.strip()])
-
-        for pattern in auditor_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
-            corporate_roles["auditors"].extend([match.strip() for match in matches if match.strip()])
-
-        # Remove duplicates
-        for key in corporate_roles:
-            corporate_roles[key] = list(set(corporate_roles[key]))
-
-        return corporate_roles
-
-    def _parse_corporate_role_entry(self, entry: str) -> Dict[str, str]:
-        """
-        Parse a corporate role entry into structured components.
-
-        Expected format: "**SURNAME** Given Names - Qualifications | Role Title (Time Period)"
-
-        Args:
-            entry: Corporate role entry string
-
-        Returns:
-            Dictionary with parsed components
-        """
-        parsed = {
-            "full_name": "",
-            "surname": "",
-            "given_names": "",
-            "qualifications": "",
-            "role_title": "",
-            "time_period": "",
-            "raw_entry": entry
-        }
-
-        try:
-            # Extract time period if present (in parentheses at the end)
-            time_match = re.search(r'\(([^)]+(?:effective|from|since|until|to)[^)]*)\)$', entry, re.IGNORECASE)
-            if time_match:
-                parsed["time_period"] = time_match.group(1).strip()
-                entry = entry[:time_match.start()].strip()
-
-            # Split by | to separate name/qualifications from role title
-            if ' | ' in entry:
-                name_qual_part, role_part = entry.split(' | ', 1)
-                parsed["role_title"] = role_part.strip()
-            else:
-                name_qual_part = entry
-
-            # Split by - to separate name from qualifications
-            if ' - ' in name_qual_part:
-                name_part, qual_part = name_qual_part.split(' - ', 1)
-                # Check if qual_part is actually a role title (no | separator and contains role keywords)
-                role_keywords = ['secretary', 'director', 'chairman', 'officer', 'auditor', 'committee']
-                if not parsed["role_title"] and any(keyword in qual_part.lower() for keyword in role_keywords):
-                    parsed["role_title"] = qual_part.strip()
-                else:
-                    parsed["qualifications"] = qual_part.strip()
-            else:
-                name_part = name_qual_part
-
-            # Extract surname (bolded) and given names
-            surname_match = re.search(r'\*\*([A-Z]+)\*\*', name_part)
-            if surname_match:
-                parsed["surname"] = surname_match.group(1)
-                # Remove the bolded surname and clean up the remaining name
-                remaining_name = re.sub(r'\*\*[A-Z]+\*\*\s*', '', name_part).strip()
-                parsed["given_names"] = remaining_name
-                parsed["full_name"] = f"{parsed['surname']} {remaining_name}".strip()
-            else:
-                # Fallback if no bolded surname found
-                parsed["full_name"] = name_part.strip()
-                # Try to guess surname (first word if all caps, or last word)
-                name_words = parsed["full_name"].split()
-                if name_words and name_words[0].isupper():
-                    parsed["surname"] = name_words[0]
-                    parsed["given_names"] = " ".join(name_words[1:])
-                elif name_words:
-                    parsed["surname"] = name_words[-1]
-                    parsed["given_names"] = " ".join(name_words[:-1])
-
-        except Exception as e:
-            logger.warning(f"Error parsing corporate role entry '{entry}': {e}")
-
-        return parsed
-
-    def _extract_ownership_rule_based(self, text: str) -> Dict[str, List[str]]:
-        """Extract ownership information using rule-based patterns."""
-        ownership = {
-            "direct_ownership": [],
-            "indirect_ownership": [],
-            "shareholding_disclosures": []
-        }
-
-        # Direct ownership patterns
-        direct_patterns = [
-            r'(?:owns|holds|direct ownership of|directly owns)\s+(\d+(?:\.\d+)?%?\s*(?:shares?|stake|interest|equity))',
-            r'(\d+(?:\.\d+)?%)\s+(?:direct|ownership|shareholding|stake)',
-            r'direct(?:ly)?\s+(?:owns|holds)\s+([^,\.]+)'
-        ]
-
-        # Indirect ownership patterns
-        indirect_patterns = [
-            r'(?:indirect ownership|indirectly owns|through subsidiaries)\s+([^,\.]+)',
-            r'(?:via|through)\s+([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)\s+(?:owns|holds)',
-            r'indirect(?:ly)?\s+(?:owns|holds)\s+([^,\.]+)'
-        ]
-
-        # Shareholding disclosure patterns
-        disclosure_patterns = [
-            r'(?:disclosure|disclosed|filing|filed)\s+(?:of|regarding)\s+([^,\.]+(?:shares?|shareholding|stake))',
-            r'(?:substantial|major)\s+(?:shareholder|shareholding)\s+([^,\.]+)',
-            r'(?:shareholding|stake)\s+(?:disclosure|filing)\s+([^,\.]+)'
-        ]
-
-        # Extract entities using patterns
-        for pattern in direct_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            ownership["direct_ownership"].extend([match.strip() for match in matches if match.strip()])
-
-        for pattern in indirect_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            ownership["indirect_ownership"].extend([match.strip() for match in matches if match.strip()])
-
-        for pattern in disclosure_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            ownership["shareholding_disclosures"].extend([match.strip() for match in matches if match.strip()])
-
-        # Remove duplicates
-        for key in ownership:
-            ownership[key] = list(set(ownership[key]))
-
-        return ownership
-
-    def _extract_transactions_rule_based(self, text: str) -> Dict[str, List[str]]:
-        """Extract transaction information using rule-based patterns."""
-        transactions = {
-            "mergers": [],
-            "joint_ventures": [],
-            "spin_offs": [],
-            "asset_sales": [],
-            "rights_issues": [],
-            "general_offers": [],
-            "other_transactions": []
-        }
-
-        # Merger patterns
-        merger_patterns = [
-            r'(?:merger|merge|consolidation|amalgamation)\s+(?:with|of|between)\s+([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)',
-            r'([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)\s+(?:merger|merge|consolidation)'
-        ]
-
-        # Joint venture patterns
-        jv_patterns = [
-            r'(?:joint venture|JV|partnership)\s+(?:with|between)\s+([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)',
-            r'([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)\s+(?:joint venture|JV)'
-        ]
-
-        # Spin-off patterns
-        spinoff_patterns = [
-            r'(?:spin-off|spinoff|demerger|divestiture)\s+(?:of|from)\s+([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)',
-            r'([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)\s+(?:spin-off|spinoff|demerger)'
-        ]
-
-        # Asset sale patterns
-        sale_patterns = [
-            r'(?:asset sale|sale of assets|disposal)\s+(?:of|to)\s+([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)',
-            r'(?:sale|disposal|divestment)\s+(?:to|of)\s+([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)'
-        ]
-
-        # Rights issue patterns
-        rights_patterns = [
-            r'(?:rights issue|rights offering|equity raise)\s+(?:by|of)\s+([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)',
-            r'([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)\s+(?:rights issue|rights offering)'
-        ]
-
-        # General offer patterns
-        offer_patterns = [
-            r'(?:general offer|takeover offer|tender offer)\s+(?:for|by)\s+([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)',
-            r'([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)\s+(?:general offer|takeover)'
-        ]
-
-        # Extract entities using patterns
-        for pattern in merger_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            transactions["mergers"].extend([match.strip() for match in matches if match.strip()])
-
-        for pattern in jv_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            transactions["joint_ventures"].extend([match.strip() for match in matches if match.strip()])
-
-        for pattern in spinoff_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            transactions["spin_offs"].extend([match.strip() for match in matches if match.strip()])
-
-        for pattern in sale_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            transactions["asset_sales"].extend([match.strip() for match in matches if match.strip()])
-
-        for pattern in rights_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            transactions["rights_issues"].extend([match.strip() for match in matches if match.strip()])
-
-        for pattern in offer_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            transactions["general_offers"].extend([match.strip() for match in matches if match.strip()])
-
-        # Remove duplicates
-        for key in transactions:
-            transactions[key] = list(set(transactions[key]))
-
-        return transactions
-
-    def _extract_personal_connections_rule_based(self, text: str) -> Dict[str, List[str]]:
-        """Extract personal connections using rule-based patterns."""
-        connections = {
-            "marriages": [],
-            "career_overlaps": [],
-            "alma_mater": [],
-            "other_connections": []
-        }
-
-        # Marriage patterns
-        marriage_patterns = [
-            r'([A-Z][A-Za-z\s]+)\s+(?:married to|spouse of|wife of|husband of)\s+([A-Z][A-Za-z\s]+)',
-            r'([A-Z][A-Za-z\s]+)\s+and\s+([A-Z][A-Za-z\s]+)\s+(?:are married|were married)'
-        ]
-
-        # Career overlap patterns
-        career_patterns = [
-            r'([A-Z][A-Za-z\s]+)\s+(?:worked with|colleague of|former colleague)\s+([A-Z][A-Za-z\s]+)',
-            r'(?:both|previously)\s+(?:worked at|employed by)\s+([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)',
-            r'([A-Z][A-Za-z\s]+)\s+and\s+([A-Z][A-Za-z\s]+)\s+(?:worked together|shared employment)'
-        ]
-
-        # Alma mater patterns
-        education_patterns = [
-            r'(?:graduated from|alumni of|studied at)\s+([A-Z][A-Za-z\s&.,]+(?:University|College|School|Institute))',
-            r'([A-Z][A-Za-z\s&.,]+(?:University|College|School|Institute))\s+(?:graduate|alumni)',
-            r'([A-Z][A-Za-z\s]+)\s+and\s+([A-Z][A-Za-z\s]+)\s+(?:both attended|classmates at)'
-        ]
-
-        # Other connection patterns
-        other_patterns = [
-            r'([A-Z][A-Za-z\s]+)\s+(?:friend of|associate of|connected to)\s+([A-Z][A-Za-z\s]+)',
-            r'(?:family|relative|relation)\s+(?:of|to)\s+([A-Z][A-Za-z\s]+)',
-            r'([A-Z][A-Za-z\s]+)\s+(?:knows|acquainted with)\s+([A-Z][A-Za-z\s]+)'
-        ]
-
-        # Extract entities using patterns
-        for pattern in marriage_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            for match in matches:
-                if isinstance(match, tuple) and len(match) == 2:
-                    connections["marriages"].append(f"{match[0].strip()} - {match[1].strip()}")
-
-        for pattern in career_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            for match in matches:
-                if isinstance(match, tuple):
-                    connections["career_overlaps"].append(" - ".join([m.strip() for m in match if m.strip()]))
-                else:
-                    connections["career_overlaps"].append(match.strip())
-
-        for pattern in education_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            for match in matches:
-                if isinstance(match, tuple):
-                    connections["alma_mater"].append(" - ".join([m.strip() for m in match if m.strip()]))
-                else:
-                    connections["alma_mater"].append(match.strip())
-
-        for pattern in other_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            for match in matches:
-                if isinstance(match, tuple):
-                    connections["other_connections"].append(" - ".join([m.strip() for m in match if m.strip()]))
-                else:
-                    connections["other_connections"].append(match.strip())
-
-        # Remove duplicates
-        for key in connections:
-            connections[key] = list(set(connections[key]))
-
-        return connections
-
-    def _extract_network_entities_rule_based(self, text: str) -> List[str]:
-        """Extract other network-related entities using rule-based patterns."""
-        network_entities = []
-
-        # Network entity patterns
-        network_patterns = [
-            r'(?:subsidiary|affiliate|related company|associated entity)\s+([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)',
-            r'(?:group company|member of|part of)\s+([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)',
-            r'(?:network|ecosystem|consortium)\s+(?:of|including)\s+([A-Z][A-Za-z\s&.,]+(?:Ltd|Inc|Corp|Corporation|Limited|AG|SE|Pte|Pty|LLC|LLP)?)'
-        ]
-
-        # Extract entities using patterns
-        for pattern in network_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            network_entities.extend([match.strip() for match in matches if match.strip()])
-
-        # Remove duplicates
-        return list(set(network_entities))
-    
-    def _extract_companies(self, text: str) -> List[str]:
-        """Extract company names from text with enhanced patterns and logging."""
-        logger.debug("Starting rule-based company extraction")
-
-        # Known tech companies (extend this list as needed)
-        tech_companies = {
-            "Google", "Microsoft", "Apple", "Amazon", "Meta", "Facebook",
-            "Tesla", "OpenAI", "Anthropic", "Nvidia", "Intel", "AMD",
-            "IBM", "Oracle", "Salesforce", "Adobe", "Netflix", "Uber",
-            "Airbnb", "Spotify", "Twitter", "LinkedIn", "Snapchat",
-            "TikTok", "ByteDance", "Baidu", "Alibaba", "Tencent",
-            "Samsung", "Sony", "Huawei", "Xiaomi", "DeepMind"
-        }
-
-        # Enhanced company patterns for better detection
-        company_patterns = [
-            r'\b([A-Z][A-Za-z\s&]+(?:Inc|Corp|Corporation|Ltd|Limited|LLC|LLP|AG|SE|SA|PLC|GmbH))\b',
-            r'\b([A-Z][A-Za-z\s&]+(?:Company|Group|Holdings|Enterprises|Industries|Systems|Technologies))\b',
-            r'\b(The\s+[A-Z][A-Za-z\s&]+(?:Inc|Corp|Corporation|Ltd|Limited|LLC|LLP|AG|SE|SA|PLC|GmbH))\b',
-            r'\b([A-Z][A-Za-z\s&]+\s+(?:Bank|Insurance|Financial|Capital|Investment|Management))\b'
-        ]
-
-        found_companies = set()
-        text_lower = text.lower()
-
-        # Search for known companies
-        for company in tech_companies:
-            # Case-insensitive search with word boundaries
-            pattern = r'\b' + re.escape(company.lower()) + r'\b'
-            if re.search(pattern, text_lower):
-                found_companies.add(company)
-                logger.debug(f"Found known company: {company}")
-
-        # Search using patterns
-        for pattern in company_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            for match in matches:
-                if match and len(match.strip()) > 2:
-                    company_name = match.strip()
-                    found_companies.add(company_name)
-                    logger.debug(f"Found company via pattern: {company_name}")
-
-        companies_list = list(found_companies)
-        logger.debug(f"Rule-based company extraction found {len(companies_list)} companies")
-        return companies_list
-    
-    def _extract_technologies(self, text: str) -> List[str]:
-        """Extract technology terms from text."""
-        tech_terms = {
-            "AI", "artificial intelligence", "machine learning", "ML",
-            "deep learning", "neural network", "LLM", "large language model",
-            "GPT", "transformer", "NLP", "natural language processing",
-            "computer vision", "reinforcement learning", "generative AI",
-            "foundation model", "multimodal", "chatbot", "API",
-            "cloud computing", "edge computing", "quantum computing",
-            "blockchain", "cryptocurrency", "IoT", "5G", "AR", "VR",
-            "autonomous vehicles", "robotics", "automation"
-        }
-        
-        found_terms = set()
-        text_lower = text.lower()
-        
-        for term in tech_terms:
-            if term.lower() in text_lower:
-                found_terms.add(term)
-        
-        return list(found_terms)
-    
-    def _extract_people(self, text: str) -> List[str]:
-        """Extract person names from text with enhanced patterns and logging."""
-        logger.debug("Starting rule-based people extraction")
-
-        # Known tech leaders (extend this list as needed)
-        tech_leaders = {
-            "Elon Musk", "Jeff Bezos", "Tim Cook", "Satya Nadella",
-            "Sundar Pichai", "Mark Zuckerberg", "Sam Altman",
-            "Dario Amodei", "Daniela Amodei", "Jensen Huang",
-            "Bill Gates", "Larry Page", "Sergey Brin", "Jack Dorsey",
-            "Reed Hastings", "Marc Benioff", "Andy Jassy"
-        }
-
-        # Enhanced person name patterns
-        person_patterns = [
-            r'\b(?:Mr|Mrs|Ms|Dr|Prof|Sir|Dame|Lord|Lady)\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b',
-            r'\b([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s*,\s*(?:CEO|CFO|CTO|Chairman|Director|President|Manager))\b',
-            r'\b([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s*\([^)]*(?:CEO|CFO|CTO|Chairman|Director|President|Manager)[^)]*\))\b',
-            r'(?:Chairman|CEO|CFO|CTO|Director|President|Manager)[\s:]+([A-Z][a-z]+\s+[A-Z][a-z]+)\b',
-            r'\b([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s+Jr\.?|\s+Sr\.?|\s+II|\s+III|\s+IV)?\b'
-        ]
-
-        found_people = set()
-
-        # Search for known people
-        for person in tech_leaders:
-            if person in text:
-                found_people.add(person)
-                logger.debug(f"Found known person: {person}")
-
-        # Search using patterns
-        for pattern in person_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            for match in matches:
-                if match and len(match.strip()) > 3:
-                    person_name = match.strip()
-                    # Additional validation to ensure it's likely a person name
-                    words = person_name.split()
-                    if len(words) >= 2 and all(word[0].isupper() for word in words):
-                        # Check it's not obviously a company
-                        person_lower = person_name.lower()
-                        org_indicators = ['inc', 'corp', 'ltd', 'llc', 'company', 'group']
-                        if not any(indicator in person_lower for indicator in org_indicators):
-                            found_people.add(person_name)
-                            logger.debug(f"Found person via pattern: {person_name}")
-
-        people_list = list(found_people)
-        logger.debug(f"Rule-based people extraction found {len(people_list)} people")
-        return people_list
-    
-    def _extract_locations(self, text: str) -> List[str]:
-        """Extract location names from text."""
-        locations = {
-            "Silicon Valley", "San Francisco", "Seattle", "Austin",
-            "New York", "Boston", "London", "Tel Aviv", "Singapore",
-            "Beijing", "Shanghai", "Tokyo", "Seoul", "Bangalore",
-            "Mountain View", "Cupertino", "Redmond", "Menlo Park"
-        }
-        
-        found_locations = set()
-        
-        for location in locations:
-            if location in text:
-                found_locations.add(location)
-        
-        return list(found_locations)
-    
     async def clear_graph(self):
         """Clear all data from the knowledge graph."""
         if not self._initialized:
             await self.initialize()
-        
+
         logger.warning("Clearing knowledge graph...")
         await self.graph_client.clear_graph()
         logger.info("Knowledge graph cleared")
 
 
+# All rule-based extraction methods removed - LLM-only extraction now used
+
+
 class SimpleEntityExtractor:
     """Simple rule-based entity extractor as fallback."""
-    
+
     def __init__(self):
         """Initialize extractor."""
         self.company_patterns = [
             r'\b(?:Google|Microsoft|Apple|Amazon|Meta|Facebook|Tesla|OpenAI)\b',
             r'\b\w+\s+(?:Inc|Corp|Corporation|Ltd|Limited|AG|SE)\b'
         ]
-        
+
         self.tech_patterns = [
             r'\b(?:AI|artificial intelligence|machine learning|ML|deep learning)\b',
             r'\b(?:neural network|transformer|GPT|LLM|NLP)\b',
             r'\b(?:cloud computing|API|blockchain|IoT|5G)\b'
         ]
-    
+
     def extract_entities(self, text: str) -> Dict[str, List[str]]:
         """Extract entities using patterns."""
         entities = {
             "companies": [],
             "technologies": []
         }
-        
+
         # Extract companies
         for pattern in self.company_patterns:
             matches = re.findall(pattern, text, re.IGNORECASE)
             entities["companies"].extend(matches)
-        
+
         # Extract technologies
         for pattern in self.tech_patterns:
             matches = re.findall(pattern, text, re.IGNORECASE)
             entities["technologies"].extend(matches)
-        
-        # Remove duplicates and clean up
+
+        # Remove duplicates
         entities["companies"] = list(set(entities["companies"]))
         entities["technologies"] = list(set(entities["technologies"]))
-        
+
         return entities
 
 
@@ -2287,42 +1743,22 @@ def create_graph_builder() -> GraphBuilder:
 async def main():
     """Example usage of the graph builder."""
     from .chunker import ChunkingConfig, create_chunker
-    
+
     # Create chunker and graph builder
     config = ChunkingConfig(chunk_size=300, use_semantic_splitting=False)
     chunker = create_chunker(config)
     graph_builder = create_graph_builder()
 
-    sample_text = """
-    TechCorp Ltd announced a merger with InnovateCorp Inc, with John Smith serving as
-    executive director and Mary Johnson as company secretary. The transaction involves
-    a direct ownership of 51% shares by TechCorp, while InnovateCorp maintains indirect
-    ownership through its subsidiary HoldingCorp AG.
+    # Initialize graph builder
+    await graph_builder.initialize()
 
-    The document issuer, Financial Services Authority, disclosed that the payee for
-    the transaction will be Investment Bank Ltd. The target company, StartupTech Pte,
-    has filed a shareholding disclosure showing substantial ownership changes.
+    # Example: Replace with your actual document text
+    document_text = "Your document text here..."
 
-    Personal connections revealed that John Smith and Mary Johnson both graduated from
-    Stanford University and previously worked together at Microsoft. The joint venture
-    between TechCorp and InnovateCorp represents a significant consolidation in the
-    artificial intelligence and machine learning space.
+    # Create chunks
+    chunks = await chunker.chunk_text(document_text, "Document Analysis")
 
-    The spin-off of the robotics division will create a separate entity, while the
-    rights issue will raise additional capital for expansion into cloud computing
-    and blockchain technologies.
-    """
-
-    # Chunk the document
-    chunks = chunker.chunk_document(
-        content=sample_text,
-        title="Corporate Network Analysis",
-        source="example.md"
-    )
-    
-    print(f"Created {len(chunks)} chunks")
-    
-    # Method 1: Extract entities from entire document (RECOMMENDED)
+    # Method 1: Extract entities from entire document (recommended)
     # This provides better context and more accurate entity extraction
     enriched_chunks = await graph_builder.extract_entities_from_document(
         chunks,
@@ -2335,69 +1771,35 @@ async def main():
         extract_transactions=True,
         extract_personal_connections=True,
         use_llm=True,
-        use_llm_for_companies=False,
+        use_llm_for_companies=True,
         use_llm_for_technologies=False,
-        use_llm_for_people=False,
-        use_llm_for_financial_entities=False,
-        use_llm_for_corporate_roles=True,  # Only this uses LLM
-        use_llm_for_ownership=False,
-        use_llm_for_transactions=False,
-        use_llm_for_personal_connections=False
+        use_llm_for_people=True,
+        use_llm_for_financial_entities=True,
+        use_llm_for_corporate_roles=True,
+        use_llm_for_ownership=True,
+        use_llm_for_transactions=True,
+        use_llm_for_personal_connections=True
     )
 
-    # Method 2: Extract entities chunk by chunk (alternative)
-    # Use this if you need different entities per chunk or for very large documents
-    # enriched_chunks = await graph_builder.extract_entities_from_chunks(
-    #     chunks,
-    #     extract_companies=True,
-    #     extract_technologies=False,
-    #     extract_people=True,
-    #     extract_financial_entities=True,
-    #     extract_corporate_roles=True,
-    #     extract_ownership=True,
-    #     extract_transactions=True,
-    #     extract_personal_connections=True,
-    #     use_llm=True,
-    #     use_llm_for_companies=False,
-    #     use_llm_for_technologies=False,
-    #     use_llm_for_people=False,
-    #     use_llm_for_financial_entities=False,
-    #     use_llm_for_corporate_roles=True,  # Only this uses LLM
-    #     use_llm_for_ownership=False,
-    #     use_llm_for_transactions=False,
-    #     use_llm_for_personal_connections=False
-    # )
-    
-    for i, chunk in enumerate(enriched_chunks):
-        entities = chunk.metadata.get('entities', {})
-        print(f"\nChunk {i} entities:")
-        for category, items in entities.items():
-            if items:  # Only show non-empty categories
-                if isinstance(items, dict):
-                    print(f"  {category}:")
-                    for subcategory, subitems in items.items():
-                        if subitems:
-                            print(f"    {subcategory}: {subitems}")
-                else:
-                    print(f"  {category}: {items}")
-    
+    # Print results
+    print("Entity extraction completed!")
+    for chunk in enriched_chunks:
+        if hasattr(chunk, 'entities') and chunk.entities:
+            print(f"\nChunk {chunk.index} entities:")
+            for entity_type, entities in chunk.entities.items():
+                if entities:
+                    print(f"  {entity_type}: {entities}")
+
     # Add to knowledge graph
-    try:
-        result = await graph_builder.add_document_to_graph(
-            chunks=enriched_chunks,
-            document_title="Corporate Network Analysis",
-            document_source="example.md",
-            document_metadata={"topic": "Corporate Networks", "date": "2024"}
-        )
-        
-        print(f"Graph building result: {result}")
-        
-    except Exception as e:
-        print(f"Graph building failed: {e}")
-    
-    finally:
-        await graph_builder.close()
+    await graph_builder.add_document_to_graph(
+        chunks=enriched_chunks,
+        title="Document Analysis",
+        source="example"
+    )
+
+    print("\nDocument added to knowledge graph!")
 
 
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
