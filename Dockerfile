@@ -18,6 +18,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY web_ui/requirements.txt web_ui_requirements.txt
 RUN pip install --no-cache-dir -r web_ui_requirements.txt
 
+# Install curl for health checks
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
 # Copy application code
 COPY . .
 

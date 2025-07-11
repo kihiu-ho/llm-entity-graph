@@ -10,6 +10,7 @@ echo "=================================="
 PRODUCTION_MODE=${PRODUCTION_MODE:-"true"}
 API_PORT=${APP_PORT:-8058}
 WEB_UI_PORT=${WEB_UI_PORT:-5000}
+APP_ENV=${APP_ENV:-"production"}
 
 # Function to check if a service is running
 check_service() {
@@ -38,20 +39,15 @@ check_service() {
 # Function to start the API server
 start_api() {
     echo "🔧 Starting Agentic RAG API server..."
-    
-    if [ "$PRODUCTION_MODE" = "true" ]; then
-        # Production mode with uvicorn
-        python -m uvicorn agent.api:app \
-            --host 0.0.0.0 \
-            --port $API_PORT \
-            --workers 2 \
-            --access-log \
-            --log-level info &
-    else
-        # Development mode
-        python -m agent.api &
-    fi
-    
+
+    # Set environment variables for the API server
+    export APP_HOST=0.0.0.0
+    export APP_PORT=$API_PORT
+    export APP_ENV=${APP_ENV:-"production"}
+
+    # Always use the agent.api module which has uvicorn built-in
+    python -m agent.api &
+
     API_PID=$!
     echo "📝 API server started with PID: $API_PID"
 }
