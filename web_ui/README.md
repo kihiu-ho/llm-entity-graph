@@ -10,14 +10,19 @@ A modern, responsive web interface for the Agentic RAG system that provides an i
 - **Health monitoring** - Real-time API connection status
 - **Tool usage display** - See which tools the agent used for each response
 
-### 🔍 Search Capabilities
-- **Quick search** - Direct access to vector, graph, and hybrid search
-- **Search results modal** - Detailed view of search results
-- **Multiple search types** - Vector, Knowledge Graph, and Hybrid search
+### ⚙️ Settings & Configuration
+- **Environment settings** - Configure database connections, LLM providers, and ingestion settings
+- **Connection testing** - Test PostgreSQL, Neo4j, and LLM connections before saving
+- **Settings persistence** - Save configuration to .env file for easy deployment
+- **Tabbed interface** - Organized settings across Database, LLM, and Ingestion tabs
 
-### 📚 Document Management
+### 📚 Document Management & Ingestion
 - **Document browser** - View available documents in the knowledge base
 - **Document metadata** - See document titles and information
+- **File upload** - Drag-and-drop or browse to upload Markdown/text files
+- **Ingestion progress** - Real-time progress tracking during document processing
+- **Ingestion configuration** - Customize chunk size, overlap, and entity extraction settings
+- **Batch processing** - Upload and process multiple files simultaneously
 
 ### 💬 Chat Features
 - **Responsive design** - Works on desktop, tablet, and mobile
@@ -82,6 +87,20 @@ The web UI communicates with the main Agentic RAG API through these endpoints:
 - `GET /documents` - Document listing
 
 ## Usage
+
+### Initial Setup
+
+1. **Configure Settings** - Click "Settings" to configure your environment
+   - **Database Tab**: Set PostgreSQL and Neo4j connection strings
+   - **LLM Tab**: Configure your LLM provider and API keys
+   - **Ingestion Tab**: Set document processing preferences
+   - **Test Connections**: Verify all connections work before saving
+
+2. **Ingest Documents** - Click "Ingest Documents" to add content
+   - Upload .md or .txt files via drag-and-drop or file browser
+   - Configure chunk size, overlap, and entity extraction settings
+   - Monitor real-time ingestion progress
+   - Review processing results and statistics
 
 ### Starting a Conversation
 

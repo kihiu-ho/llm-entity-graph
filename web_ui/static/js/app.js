@@ -34,6 +34,29 @@ class AgenticRAGUI {
         // Action buttons
         this.clearChatBtn = document.getElementById('clear-chat');
         this.exportChatBtn = document.getElementById('export-chat');
+        this.settingsBtn = document.getElementById('settings-btn');
+        this.ingestionBtn = document.getElementById('ingestion-btn');
+
+        // Settings modal elements
+        this.settingsModal = document.getElementById('settings-modal');
+        this.closeSettingsModal = document.getElementById('close-settings-modal');
+        this.saveSettingsBtn = document.getElementById('save-settings');
+        this.loadSettingsBtn = document.getElementById('load-settings');
+        this.testDbBtn = document.getElementById('test-db-connection');
+        this.testLlmBtn = document.getElementById('test-llm-connection');
+
+        // Ingestion modal elements
+        this.ingestionModal = document.getElementById('ingestion-modal');
+        this.closeIngestionModal = document.getElementById('close-ingestion-modal');
+        this.uploadArea = document.getElementById('upload-area');
+        this.fileInput = document.getElementById('file-input');
+        this.browseFilesBtn = document.getElementById('browse-files');
+        this.startIngestionBtn = document.getElementById('start-ingestion');
+        this.cancelIngestionBtn = document.getElementById('cancel-ingestion');
+
+        // File management
+        this.selectedFiles = [];
+        this.isIngesting = false;
         
         // Documents
         this.documentsList = document.getElementById('documents-list');
@@ -67,6 +90,28 @@ class AgenticRAGUI {
         // Action buttons
         this.clearChatBtn.addEventListener('click', () => this.clearChat());
         this.exportChatBtn.addEventListener('click', () => this.exportChat());
+        this.settingsBtn.addEventListener('click', () => this.openSettingsModal());
+        this.ingestionBtn.addEventListener('click', () => this.openIngestionModal());
+
+        // Settings modal events
+        this.closeSettingsModal.addEventListener('click', () => this.closeModal(this.settingsModal));
+        this.saveSettingsBtn.addEventListener('click', () => this.saveSettings());
+        this.loadSettingsBtn.addEventListener('click', () => this.loadSettings());
+        this.testDbBtn.addEventListener('click', () => this.testDatabaseConnection());
+        this.testLlmBtn.addEventListener('click', () => this.testLlmConnection());
+
+        // Ingestion modal events
+        this.closeIngestionModal.addEventListener('click', () => this.closeModal(this.ingestionModal));
+        this.browseFilesBtn.addEventListener('click', () => this.fileInput.click());
+        this.fileInput.addEventListener('change', (e) => this.handleFileSelection(e));
+        this.startIngestionBtn.addEventListener('click', () => this.startIngestion());
+        this.cancelIngestionBtn.addEventListener('click', () => this.cancelIngestion());
+
+        // Upload area drag and drop
+        this.setupDragAndDrop();
+
+        // Tab switching
+        this.setupTabSwitching();
         
         // Example queries
         document.addEventListener('click', (e) => {
@@ -390,15 +435,441 @@ class AgenticRAGUI {
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
         toast.textContent = message;
-        
+
         this.toastContainer.appendChild(toast);
-        
+
         // Auto-remove after 5 seconds
         setTimeout(() => {
             if (toast.parentNode) {
                 toast.parentNode.removeChild(toast);
             }
         }, 5000);
+    }
+
+    // Settings Management
+    openSettingsModal() {
+        this.settingsModal.style.display = 'block';
+        this.loadSettings();
+    }
+
+    closeModal(modal) {
+        modal.style.display = 'none';
+    }
+
+    setupTabSwitching() {
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const tabPanes = document.querySelectorAll('.tab-pane');
+
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const targetTab = btn.dataset.tab;
+
+                // Update active tab button
+                tabBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                // Update active tab pane
+                tabPanes.forEach(pane => pane.classList.remove('active'));
+                document.getElementById(`${targetTab}-tab`).classList.add('active');
+            });
+        });
+    }
+
+    async loadSettings() {
+        try {
+            const response = await fetch('/api/settings');
+            if (response.ok) {
+                const settings = await response.json();
+                this.populateSettingsForm(settings);
+            } else {
+                this.showToast('warning', 'Could not load current settings');
+            }
+        } catch (error) {
+            console.error('Failed to load settings:', error);
+            this.showToast('error', 'Failed to load settings');
+        }
+    }
+
+    populateSettingsForm(settings) {
+        // Database settings
+        document.getElementById('database-url').value = settings.database_url || '';
+        document.getElementById('neo4j-uri').value = settings.neo4j_uri || '';
+        document.getElementById('neo4j-username').value = settings.neo4j_username || '';
+        document.getElementById('neo4j-password').value = settings.neo4j_password || '';
+
+        // LLM settings
+        document.getElementById('llm-provider').value = settings.llm_provider || 'openai';
+        document.getElementById('llm-api-key').value = settings.llm_api_key || '';
+        document.getElementById('llm-model').value = settings.llm_model || '';
+        document.getElementById('embedding-model').value = settings.embedding_model || '';
+
+        // Ingestion settings
+        document.getElementById('chunk-size').value = settings.chunk_size || 8000;
+        document.getElementById('chunk-overlap').value = settings.chunk_overlap || 800;
+        document.getElementById('extract-entities').checked = settings.extract_entities !== false;
+        document.getElementById('clean-before-ingest').checked = settings.clean_before_ingest || false;
+    }
+
+    async saveSettings() {
+        const settings = {
+            database_url: document.getElementById('database-url').value,
+            neo4j_uri: document.getElementById('neo4j-uri').value,
+            neo4j_username: document.getElementById('neo4j-username').value,
+            neo4j_password: document.getElementById('neo4j-password').value,
+            llm_provider: document.getElementById('llm-provider').value,
+            llm_api_key: document.getElementById('llm-api-key').value,
+            llm_model: document.getElementById('llm-model').value,
+            embedding_model: document.getElementById('embedding-model').value,
+            chunk_size: parseInt(document.getElementById('chunk-size').value),
+            chunk_overlap: parseInt(document.getElementById('chunk-overlap').value),
+            extract_entities: document.getElementById('extract-entities').checked,
+            clean_before_ingest: document.getElementById('clean-before-ingest').checked
+        };
+
+        try {
+            const response = await fetch('/api/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(settings)
+            });
+
+            if (response.ok) {
+                this.showToast('success', 'Settings saved successfully');
+                this.closeModal(this.settingsModal);
+            } else {
+                const error = await response.json();
+                this.showToast('error', `Failed to save settings: ${error.detail}`);
+            }
+        } catch (error) {
+            console.error('Failed to save settings:', error);
+            this.showToast('error', 'Failed to save settings');
+        }
+    }
+
+    async testDatabaseConnection() {
+        const dbUrl = document.getElementById('database-url').value;
+        const neo4jUri = document.getElementById('neo4j-uri').value;
+        const neo4jUsername = document.getElementById('neo4j-username').value;
+        const neo4jPassword = document.getElementById('neo4j-password').value;
+
+        if (!dbUrl || !neo4jUri) {
+            this.showToast('warning', 'Please fill in database connection details');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/test-connections', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    database_url: dbUrl,
+                    neo4j_uri: neo4jUri,
+                    neo4j_username: neo4jUsername,
+                    neo4j_password: neo4jPassword
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.database && result.neo4j) {
+                this.showToast('success', 'Database connections successful');
+            } else {
+                const errors = [];
+                if (!result.database) errors.push('PostgreSQL');
+                if (!result.neo4j) errors.push('Neo4j');
+                this.showToast('error', `Connection failed: ${errors.join(', ')}`);
+            }
+        } catch (error) {
+            console.error('Connection test failed:', error);
+            this.showToast('error', 'Connection test failed');
+        }
+    }
+
+    async testLlmConnection() {
+        const provider = document.getElementById('llm-provider').value;
+        const apiKey = document.getElementById('llm-api-key').value;
+        const model = document.getElementById('llm-model').value;
+
+        if (!apiKey || !model) {
+            this.showToast('warning', 'Please fill in LLM configuration');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/test-llm', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    provider: provider,
+                    api_key: apiKey,
+                    model: model
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.showToast('success', 'LLM connection successful');
+            } else {
+                this.showToast('error', `LLM test failed: ${result.error}`);
+            }
+        } catch (error) {
+            console.error('LLM test failed:', error);
+            this.showToast('error', 'LLM test failed');
+        }
+    }
+
+    // Document Ingestion
+    openIngestionModal() {
+        this.ingestionModal.style.display = 'block';
+        this.resetIngestionForm();
+    }
+
+    resetIngestionForm() {
+        this.selectedFiles = [];
+        this.updateFileList();
+        this.hideIngestionProgress();
+        this.hideIngestionResults();
+        this.startIngestionBtn.disabled = true;
+        this.isIngesting = false;
+    }
+
+    setupDragAndDrop() {
+        this.uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            this.uploadArea.classList.add('dragover');
+        });
+
+        this.uploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            this.uploadArea.classList.remove('dragover');
+        });
+
+        this.uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            this.uploadArea.classList.remove('dragover');
+
+            const files = Array.from(e.dataTransfer.files);
+            this.addFiles(files);
+        });
+
+        this.uploadArea.addEventListener('click', () => {
+            this.fileInput.click();
+        });
+    }
+
+    handleFileSelection(event) {
+        const files = Array.from(event.target.files);
+        this.addFiles(files);
+    }
+
+    addFiles(files) {
+        const validFiles = files.filter(file => {
+            const isValid = file.name.endsWith('.md') || file.name.endsWith('.txt');
+            if (!isValid) {
+                this.showToast('warning', `Skipped ${file.name}: Only .md and .txt files are supported`);
+            }
+            return isValid;
+        });
+
+        // Add new files, avoiding duplicates
+        validFiles.forEach(file => {
+            if (!this.selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
+                this.selectedFiles.push(file);
+            }
+        });
+
+        this.updateFileList();
+        this.startIngestionBtn.disabled = this.selectedFiles.length === 0;
+    }
+
+    updateFileList() {
+        const fileList = document.getElementById('file-list');
+        const selectedFilesList = document.getElementById('selected-files');
+
+        if (this.selectedFiles.length === 0) {
+            fileList.style.display = 'none';
+            return;
+        }
+
+        fileList.style.display = 'block';
+        selectedFilesList.innerHTML = this.selectedFiles.map((file, index) => `
+            <li>
+                <span>${file.name} (${this.formatFileSize(file.size)})</span>
+                <i class="fas fa-times file-remove" data-index="${index}"></i>
+            </li>
+        `).join('');
+
+        // Add remove file event listeners
+        selectedFilesList.querySelectorAll('.file-remove').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const index = parseInt(e.target.dataset.index);
+                this.selectedFiles.splice(index, 1);
+                this.updateFileList();
+                this.startIngestionBtn.disabled = this.selectedFiles.length === 0;
+            });
+        });
+    }
+
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    async startIngestion() {
+        if (this.selectedFiles.length === 0) {
+            this.showToast('warning', 'Please select files to ingest');
+            return;
+        }
+
+        this.isIngesting = true;
+        this.startIngestionBtn.disabled = true;
+        this.cancelIngestionBtn.style.display = 'inline-block';
+
+        this.showIngestionProgress();
+        this.updateProgress(0, 'Preparing ingestion...');
+
+        try {
+            // Create FormData with files
+            const formData = new FormData();
+            this.selectedFiles.forEach(file => {
+                formData.append('files', file);
+            });
+
+            // Add ingestion configuration
+            const config = {
+                chunk_size: parseInt(document.getElementById('chunk-size').value) || 8000,
+                chunk_overlap: parseInt(document.getElementById('chunk-overlap').value) || 800,
+                extract_entities: document.getElementById('extract-entities').checked,
+                clean_before_ingest: document.getElementById('clean-before-ingest').checked
+            };
+
+            formData.append('config', JSON.stringify(config));
+
+            // Start ingestion
+            const response = await fetch('/api/ingest', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error(`Ingestion failed: ${response.statusText}`);
+            }
+
+            // Handle streaming response
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const { done, value } = await reader.read();
+
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            this.handleIngestionProgress(data);
+                        } catch (e) {
+                            console.error('Failed to parse progress data:', e);
+                        }
+                    }
+                }
+
+                if (!this.isIngesting) {
+                    // Ingestion was cancelled
+                    reader.cancel();
+                    break;
+                }
+            }
+
+        } catch (error) {
+            console.error('Ingestion failed:', error);
+            this.showToast('error', `Ingestion failed: ${error.message}`);
+            this.updateProgress(0, 'Ingestion failed');
+        } finally {
+            this.isIngesting = false;
+            this.startIngestionBtn.disabled = false;
+            this.cancelIngestionBtn.style.display = 'none';
+        }
+    }
+
+    handleIngestionProgress(data) {
+        if (data.type === 'progress') {
+            const percent = Math.round((data.current / data.total) * 100);
+            this.updateProgress(percent, `Processing ${data.current}/${data.total} documents...`);
+        } else if (data.type === 'result') {
+            this.showIngestionResults(data.results);
+            this.updateProgress(100, 'Ingestion completed');
+            this.showToast('success', 'Document ingestion completed successfully');
+        } else if (data.type === 'error') {
+            this.showToast('error', `Ingestion error: ${data.message}`);
+            this.updateProgress(0, 'Ingestion failed');
+        }
+    }
+
+    updateProgress(percent, message) {
+        const progressFill = document.getElementById('progress-fill');
+        const progressText = document.getElementById('progress-text');
+
+        progressFill.style.width = `${percent}%`;
+        progressText.textContent = `${percent}% - ${message}`;
+    }
+
+    showIngestionProgress() {
+        document.getElementById('ingestion-progress').style.display = 'block';
+    }
+
+    hideIngestionProgress() {
+        document.getElementById('ingestion-progress').style.display = 'none';
+    }
+
+    showIngestionResults(results) {
+        const resultsContainer = document.getElementById('ingestion-results');
+        const resultsContent = document.getElementById('results-content');
+
+        resultsContent.innerHTML = results.map(result => `
+            <div class="result-item">
+                <h6>${result.title}</h6>
+                <div class="result-stats">
+                    <span class="status-success">✓ ${result.chunks_created} chunks</span>
+                    <span class="status-success">✓ ${result.entities_extracted} entities</span>
+                    <span class="status-success">✓ ${result.relationships_created} relationships</span>
+                    <span>⏱ ${result.processing_time_ms}ms</span>
+                </div>
+                ${result.errors.length > 0 ? `
+                    <div class="result-errors">
+                        ${result.errors.map(error => `<div class="status-error">⚠ ${error}</div>`).join('')}
+                    </div>
+                ` : ''}
+            </div>
+        `).join('');
+
+        resultsContainer.style.display = 'block';
+    }
+
+    hideIngestionResults() {
+        document.getElementById('ingestion-results').style.display = 'none';
+    }
+
+    cancelIngestion() {
+        this.isIngesting = false;
+        this.updateProgress(0, 'Ingestion cancelled');
+        this.showToast('warning', 'Ingestion cancelled');
+        this.startIngestionBtn.disabled = false;
+        this.cancelIngestionBtn.style.display = 'none';
     }
 }
 

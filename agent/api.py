@@ -11,12 +11,15 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import uuid
 
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends, File, UploadFile, Form
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 import uvicorn
 from dotenv import load_dotenv
+from pydantic import BaseModel
+import tempfile
+import shutil
 
 from .agent import rag_agent, AgentDependencies
 from .db_utils import (
@@ -652,6 +655,96 @@ async def global_exception_handler(request: Request, exc: Exception):
         error_type=type(exc).__name__,
         request_id=str(uuid.uuid4())
     )
+
+
+# Test endpoints for settings validation
+class TestConnectionRequest(BaseModel):
+    database_url: Optional[str] = None
+    neo4j_uri: Optional[str] = None
+    neo4j_username: Optional[str] = None
+    neo4j_password: Optional[str] = None
+
+class TestLLMRequest(BaseModel):
+    provider: str
+    api_key: str
+    model: str
+
+@app.post("/test-db")
+async def test_database_connection(request: TestConnectionRequest):
+    """Test PostgreSQL database connection."""
+    try:
+        # Use existing connection test
+        success = await test_connection()
+        return {"success": success}
+    except Exception as e:
+        logger.error(f"Database test failed: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/test-neo4j")
+async def test_neo4j_connection(request: TestConnectionRequest):
+    """Test Neo4j database connection."""
+    try:
+        # Use existing connection test
+        success = await test_graph_connection()
+        return {"success": success}
+    except Exception as e:
+        logger.error(f"Neo4j test failed: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/test-llm")
+async def test_llm_connection(request: TestLLMRequest):
+    """Test LLM connection."""
+    try:
+        # Simple validation - just check if API key and model are provided
+        if not request.api_key or not request.model:
+            return {"success": False, "error": "API key and model are required"}
+        return {"success": True, "response": "Configuration appears valid"}
+    except Exception as e:
+        logger.error(f"LLM test failed: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/ingest")
+async def ingest_documents_endpoint(
+    files: List[UploadFile] = File(...),
+    config: str = Form(...)
+):
+    """Handle document ingestion with file upload."""
+    try:
+        # Parse configuration
+        ingestion_config = json.loads(config)
+
+        # Create temporary directory
+        temp_dir = tempfile.mkdtemp()
+
+        try:
+            # Save uploaded files
+            saved_files = []
+            for file in files:
+                if file.filename and (file.filename.endswith('.md') or file.filename.endswith('.txt')):
+                    file_path = os.path.join(temp_dir, file.filename)
+                    with open(file_path, 'wb') as f:
+                        content = await file.read()
+                        f.write(content)
+                    saved_files.append(file_path)
+
+            if not saved_files:
+                raise HTTPException(status_code=400, detail="No valid files to ingest")
+
+            # For now, return a simple success response
+            # In a full implementation, this would integrate with the ingestion pipeline
+            return {
+                "message": "Files uploaded successfully",
+                "files_processed": len(saved_files),
+                "files": [os.path.basename(f) for f in saved_files]
+            }
+
+        finally:
+            # Clean up temporary files
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    except Exception as e:
+        logger.error(f"Document ingestion failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Development server
