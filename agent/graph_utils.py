@@ -13,8 +13,9 @@ import asyncio
 from graphiti_core import Graphiti
 from graphiti_core.utils.maintenance.graph_data_operations import clear_data
 from graphiti_core.llm_client.config import LLMConfig
-from graphiti_core.llm_client.openai_client import OpenAIClient
-from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
+from .enhanced_openai_client import EnhancedOpenAIClient
+from graphiti_core.embedder.openai import OpenAIEmbedderConfig
+from .custom_embedder import TokenLimitedOpenAIEmbedder
 from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
 from dotenv import load_dotenv
 
@@ -88,11 +89,11 @@ class GraphitiClient:
                 base_url=self.llm_base_url
             )
             
-            # Create OpenAI LLM client
-            llm_client = OpenAIClient(config=llm_config)
+            # Create Enhanced OpenAI LLM client with robust JSON parsing
+            llm_client = EnhancedOpenAIClient(config=llm_config)
             
-            # Create OpenAI embedder
-            embedder = OpenAIEmbedder(
+            # Create token-limited OpenAI embedder
+            embedder = TokenLimitedOpenAIEmbedder(
                 config=OpenAIEmbedderConfig(
                     api_key=self.embedding_api_key,
                     embedding_model=self.embedding_model,
@@ -687,9 +688,9 @@ class GraphitiClient:
                 base_url=self.llm_base_url
             )
             
-            llm_client = OpenAIClient(config=llm_config)
+            llm_client = EnhancedOpenAIClient(config=llm_config)
             
-            embedder = OpenAIEmbedder(
+            embedder = TokenLimitedOpenAIEmbedder(
                 config=OpenAIEmbedderConfig(
                     api_key=self.embedding_api_key,
                     embedding_model=self.embedding_model,

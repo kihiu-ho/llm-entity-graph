@@ -264,7 +264,7 @@ class DocumentIngestionPipeline:
         # Add to knowledge graph (if enabled)
         relationships_created = 0
         graph_errors = []
-        
+
         if not self.config.skip_graph_building:
             try:
                 logger.info("Building knowledge graph relationships (this may take several minutes)...")
@@ -274,12 +274,23 @@ class DocumentIngestionPipeline:
                     document_source=document_source,
                     document_metadata=document_metadata
                 )
-                
+
                 relationships_created = graph_result.get("episodes_created", 0)
                 graph_errors = graph_result.get("errors", [])
-                
+
                 logger.info(f"Added {relationships_created} episodes to knowledge graph")
-                
+
+                # Clean up Entity labels after graph building
+                try:
+                    logger.info("Cleaning up Entity labels from Person and Company nodes...")
+                    cleanup_result = await self._cleanup_entity_labels()
+                    if cleanup_result:
+                        logger.info(f"✅ Cleaned up Entity labels: {cleanup_result['person_nodes_fixed']} Person nodes, {cleanup_result['company_nodes_fixed']} Company nodes")
+                    else:
+                        logger.info("✅ No Entity labels found to clean up")
+                except Exception as cleanup_error:
+                    logger.warning(f"Entity label cleanup failed (non-critical): {cleanup_error}")
+
             except Exception as e:
                 error_msg = f"Failed to add to knowledge graph: {str(e)}"
                 logger.error(error_msg)
@@ -432,6 +443,88 @@ class DocumentIngestionPipeline:
         # Clean knowledge graph
         await self.graph_builder.clear_graph()
         logger.info("Cleaned knowledge graph")
+
+    async def _cleanup_entity_labels(self) -> Optional[Dict[str, int]]:
+        """
+        Clean up Entity labels from Person and Company nodes.
+
+        Returns:
+            Dictionary with cleanup statistics or None if no cleanup needed
+        """
+        try:
+            # Import here to avoid circular imports
+            from ..agent.neo4j_schema_manager import Neo4jSchemaManager
+
+            schema_manager = Neo4jSchemaManager(
+                uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+                user=os.getenv("NEO4J_USER", "neo4j"),
+                password=os.getenv("NEO4J_PASSWORD", "password")
+            )
+
+            try:
+                await schema_manager.initialize()
+
+                async with schema_manager.driver.session() as session:
+                    # Count Person nodes with Entity label
+                    person_entity_query = """
+                    MATCH (n:Person:Entity)
+                    RETURN count(n) as count
+                    """
+                    result = await session.run(person_entity_query)
+                    record = await result.single()
+                    person_entity_count = record['count'] if record else 0
+
+                    # Count Company nodes with Entity label
+                    company_entity_query = """
+                    MATCH (n:Company:Entity)
+                    RETURN count(n) as count
+                    """
+                    result = await session.run(company_entity_query)
+                    record = await result.single()
+                    company_entity_count = record['count'] if record else 0
+
+                    # If no nodes need cleanup, return None
+                    if person_entity_count == 0 and company_entity_count == 0:
+                        return None
+
+                    # Remove Entity label from Person nodes
+                    fixed_person_count = 0
+                    if person_entity_count > 0:
+                        remove_person_entity_query = """
+                        MATCH (n:Person:Entity)
+                        REMOVE n:Entity
+                        RETURN count(n) as fixed_count
+                        """
+                        result = await session.run(remove_person_entity_query)
+                        record = await result.single()
+                        fixed_person_count = record['fixed_count'] if record else 0
+
+                    # Remove Entity label from Company nodes
+                    fixed_company_count = 0
+                    if company_entity_count > 0:
+                        remove_company_entity_query = """
+                        MATCH (n:Company:Entity)
+                        REMOVE n:Entity
+                        RETURN count(n) as fixed_count
+                        """
+                        result = await session.run(remove_company_entity_query)
+                        record = await result.single()
+                        fixed_company_count = record['fixed_count'] if record else 0
+
+                    return {
+                        "person_nodes_fixed": fixed_person_count,
+                        "company_nodes_fixed": fixed_company_count
+                    }
+
+            finally:
+                await schema_manager.close()
+
+        except ImportError as e:
+            logger.warning(f"Could not import Neo4jSchemaManager for cleanup: {e}")
+            return None
+        except Exception as e:
+            logger.warning(f"Entity label cleanup failed: {e}")
+            return None
 
 
 async def main():

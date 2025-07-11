@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 Agentic RAG with Knowledge Graph</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-robot"></i> Agentic RAG with Knowledge Graph</h1>
+                <div class="status-indicator">
+                    <span id="status-dot" class="status-dot"></span>
+                    <span id="status-text">Checking...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <h3><i class="fas fa-file-alt"></i> Documents</h3>
+                    <div id="documents-list" class="documents-list">
+                        <div class="loading">Loading documents...</div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3><i class="fas fa-cog"></i> Actions</h3>
+                    <div class="action-buttons">
+                        <button id="clear-chat" class="action-btn">
+                            <i class="fas fa-trash"></i> Clear Chat
+                        </button>
+                        <button id="export-chat" class="action-btn">
+                            <i class="fas fa-download"></i> Export Chat
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Chat Area -->
+            <section class="chat-area">
+                <div id="chat-messages" class="chat-messages">
+                    <div class="welcome-message">
+                        <div class="welcome-content">
+                            <h2>Welcome to Agentic RAG! 🚀</h2>
+                            <p>I'm an AI agent with access to vector search, knowledge graph, and hybrid search tools.</p>
+                            <div class="example-queries">
+                                <h4>Try asking me about:</h4>
+                                <ul>
+                                    <li>"What are Google's AI initiatives?"</li>
+                                    <li>"Tell me about Microsoft's partnerships with OpenAI"</li>
+                                    <li>"Compare OpenAI and Anthropic's approaches to AI safety"</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chat-input-area">
+                    <div class="input-group">
+                        <textarea id="message-input" placeholder="Type your message here..." rows="1"></textarea>
+                        <button id="send-btn" disabled>
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                    <div class="input-info">
+                        <span class="typing-indicator" id="typing-indicator" style="display: none;">
+                            <i class="fas fa-circle-notch fa-spin"></i> Agent is thinking...
+                        </span>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+
+
+        <!-- Tools Used Display -->
+        <div id="tools-display" class="tools-display" style="display: none;">
+            <div class="tools-header">
+                <h4><i class="fas fa-tools"></i> Tools Used</h4>
+                <button class="close-tools" id="close-tools">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div id="tools-content" class="tools-content">
+                <!-- Tools information will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

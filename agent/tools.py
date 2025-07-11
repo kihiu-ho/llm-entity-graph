@@ -43,20 +43,41 @@ EMBEDDING_MODEL = get_embedding_model()
 
 async def generate_embedding(text: str) -> List[float]:
     """
-    Generate embedding for text using OpenAI.
-    
+    Generate embedding for text using OpenAI with proper token limiting.
+
     Args:
         text: Text to embed
-    
+
     Returns:
         Embedding vector
     """
     try:
-        response = await embedding_client.embeddings.create(
-            model=EMBEDDING_MODEL,
-            input=text
-        )
-        return response.data[0].embedding
+        # Import here to avoid circular imports
+        from ..ingestion.embedder import EmbeddingGenerator
+
+        # Use the proper embedder with token limiting
+        embedder = EmbeddingGenerator(model=EMBEDDING_MODEL)
+        return await embedder.generate_embedding(text)
+
+    except ImportError:
+        # Fallback to direct API call with basic truncation
+        logger.warning("Using fallback embedding generation without advanced token limiting")
+
+        # Basic character-based truncation as fallback
+        max_chars = 8191 * 4  # Rough estimation
+        if len(text) > max_chars:
+            text = text[:max_chars]
+            logger.warning(f"Text truncated to {max_chars} characters for embedding")
+
+        try:
+            response = await embedding_client.embeddings.create(
+                model=EMBEDDING_MODEL,
+                input=text
+            )
+            return response.data[0].embedding
+        except Exception as e:
+            logger.error(f"Failed to generate embedding: {e}")
+            raise
     except Exception as e:
         logger.error(f"Failed to generate embedding: {e}")
         raise

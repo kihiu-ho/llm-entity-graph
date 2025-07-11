@@ -12,6 +12,15 @@ import json
 from openai import RateLimitError, APIError
 from dotenv import load_dotenv
 
+# Import tiktoken with fallback
+try:
+    import tiktoken
+    TIKTOKEN_AVAILABLE = True
+except ImportError:
+    TIKTOKEN_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("tiktoken not available. Install with: pip install tiktoken")
+
 from .chunker import DocumentChunk
 
 # Import flexible providers
@@ -64,26 +73,74 @@ class EmbeddingGenerator:
             "text-embedding-3-large": {"dimensions": 3072, "max_tokens": 8191},
             "text-embedding-ada-002": {"dimensions": 1536, "max_tokens": 8191}
         }
-        
+
         if model not in self.model_configs:
             logger.warning(f"Unknown model {model}, using default config")
             self.config = {"dimensions": 1536, "max_tokens": 8191}
         else:
             self.config = self.model_configs[model]
-    
+
+        # Initialize tokenizer for accurate token counting
+        if TIKTOKEN_AVAILABLE:
+            try:
+                self.tokenizer = tiktoken.encoding_for_model(model)
+            except KeyError:
+                # Fallback to cl100k_base encoding for unknown models
+                logger.warning(f"No tokenizer found for {model}, using cl100k_base")
+                self.tokenizer = tiktoken.get_encoding("cl100k_base")
+        else:
+            self.tokenizer = None
+            logger.warning("tiktoken not available - using character-based estimation")
+
+    def _truncate_text(self, text: str) -> str:
+        """
+        Truncate text to fit within model's token limit.
+
+        Args:
+            text: Text to truncate
+
+        Returns:
+            Truncated text that fits within token limit
+        """
+        if not text or not text.strip():
+            return text
+
+        if self.tokenizer is not None:
+            # Use accurate token counting with tiktoken
+            tokens = self.tokenizer.encode(text)
+
+            # If within limit, return as-is
+            if len(tokens) <= self.config["max_tokens"]:
+                return text
+
+            # Truncate tokens and decode back to text
+            truncated_tokens = tokens[:self.config["max_tokens"]]
+            truncated_text = self.tokenizer.decode(truncated_tokens)
+
+            logger.warning(f"Text truncated from {len(tokens)} to {len(truncated_tokens)} tokens")
+            return truncated_text
+        else:
+            # Fallback to character-based estimation (less accurate)
+            max_chars = self.config["max_tokens"] * 4  # Rough estimation
+            if len(text) <= max_chars:
+                return text
+
+            truncated_text = text[:max_chars]
+            logger.warning(f"Text truncated from {len(text)} to {len(truncated_text)} characters (tiktoken not available)")
+            return truncated_text
+
     async def generate_embedding(self, text: str) -> List[float]:
         """
         Generate embedding for a single text.
-        
+
         Args:
             text: Text to embed
-        
+
         Returns:
             Embedding vector
         """
-        # Truncate text if too long
-        if len(text) > self.config["max_tokens"] * 4:  # Rough token estimation
-            text = text[:self.config["max_tokens"] * 4]
+        # Truncate text if too long using proper token counting
+        text = self._truncate_text(text)
         
         for attempt in range(self.max_retries):
             try:
@@ -128,18 +185,16 @@ class EmbeddingGenerator:
         Returns:
             List of embedding vectors
         """
-        # Filter and truncate texts
+        # Filter and truncate texts using proper token counting
         processed_texts = []
         for text in texts:
             if not text or not text.strip():
                 processed_texts.append("")
                 continue
-                
-            # Truncate if too long
-            if len(text) > self.config["max_tokens"] * 4:
-                text = text[:self.config["max_tokens"] * 4]
-            
-            processed_texts.append(text)
+
+            # Truncate using proper token counting
+            truncated_text = self._truncate_text(text)
+            processed_texts.append(truncated_text)
         
         for attempt in range(self.max_retries):
             try:
