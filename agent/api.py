@@ -80,27 +80,46 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for FastAPI app."""
     # Startup
     logger.info("Starting up agentic RAG API...")
-    
+
     try:
+        # Load environment variables explicitly
+        from dotenv import load_dotenv
+        load_dotenv()
+
+        # Check required environment variables
+        required_vars = ["DATABASE_URL", "NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD", "LLM_API_KEY"]
+        missing_vars = []
+
+        for var in required_vars:
+            if not os.getenv(var):
+                missing_vars.append(var)
+
+        if missing_vars:
+            logger.error(f"Missing required environment variables: {missing_vars}")
+            logger.error("Please set these environment variables and restart the application")
+            raise ValueError(f"Missing required environment variables: {missing_vars}")
+
+        logger.info("Environment variables validated")
+
         # Initialize database connections
         await initialize_database()
         logger.info("Database initialized")
-        
+
         # Initialize graph database
         await initialize_graph()
         logger.info("Graph database initialized")
-        
+
         # Test connections
         db_ok = await test_connection()
         graph_ok = await test_graph_connection()
-        
+
         if not db_ok:
             logger.error("Database connection failed")
         if not graph_ok:
             logger.error("Graph database connection failed")
-        
+
         logger.info("Agentic RAG API startup complete")
-        
+
     except Exception as e:
         logger.error(f"Startup failed: {e}")
         raise

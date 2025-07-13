@@ -70,37 +70,20 @@ echo "   Web UI: $WEB_UI_HOST:$WEB_UI_PORT"
 echo "   API Base URL: $API_BASE_URL"
 echo ""
 
-# Validate required environment variables
+# Load .env file if it exists and export variables
+if [ -f "/app/.env" ]; then
+    echo "🔧 Loading environment variables from .env file..."
+    export $(grep -v '^#' /app/.env | grep -v '^$' | xargs)
+fi
+
+# Validate environment variables using Python script
 echo "🔍 Validating environment variables..."
-
-required_vars=(
-    "DATABASE_URL"
-    "NEO4J_URI"
-    "NEO4J_USERNAME"
-    "NEO4J_PASSWORD"
-    "LLM_API_KEY"
-)
-
-missing_vars=()
-for var in "${required_vars[@]}"; do
-    if [ -z "${!var}" ]; then
-        missing_vars+=("$var")
-    else
-        echo "   ✅ $var is set"
-    fi
-done
-
-if [ ${#missing_vars[@]} -ne 0 ]; then
-    echo "❌ Missing required environment variables:"
-    for var in "${missing_vars[@]}"; do
-        echo "   - $var"
-    done
-    echo ""
-    echo "Please set these environment variables and try again."
+if ! python validate_environment.py; then
+    echo "❌ Environment validation failed"
     exit 1
 fi
 
-echo "✅ All required environment variables are set"
+echo "✅ Environment validation passed"
 echo ""
 
 # Check if ports are available
