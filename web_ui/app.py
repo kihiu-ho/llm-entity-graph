@@ -63,7 +63,7 @@ else:
 
 # Configuration
 API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:8058')
-WEB_UI_PORT = int(os.getenv('WEB_UI_PORT', 5001))
+WEB_UI_PORT = int(os.getenv('WEB_UI_PORT', 5000))
 WEB_UI_HOST = os.getenv('WEB_UI_HOST', '0.0.0.0')
 
 class WebUIClient:
@@ -77,23 +77,50 @@ class WebUIClient:
         if not AIOHTTP_AVAILABLE:
             return {
                 "status": "unhealthy",
-                "error": "aiohttp not available - install with: pip install aiohttp"
+                "error": "aiohttp not available - install with: pip install aiohttp",
+                "suggestion": "Run: pip install aiohttp"
             }
 
         try:
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=5)  # 5 second timeout
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(f"{self.base_url}/health") as response:
                     if response.status == 200:
-                        return await response.json()
+                        data = await response.json()
+                        return {
+                            "status": "healthy",
+                            "api_url": self.base_url,
+                            **data
+                        }
                     else:
                         return {
                             "status": "unhealthy",
-                            "error": f"HTTP {response.status}"
+                            "error": f"API returned HTTP {response.status}",
+                            "api_url": self.base_url,
+                            "suggestion": "Check if the API server is running properly"
                         }
+        except aiohttp.ClientConnectorError as e:
+            return {
+                "status": "unhealthy",
+                "error": "Cannot connect to API server",
+                "api_url": self.base_url,
+                "suggestion": "Make sure the Agentic RAG API server is running",
+                "details": f"Connection failed: {str(e)}"
+            }
+        except asyncio.TimeoutError:
+            return {
+                "status": "unhealthy",
+                "error": "Connection timeout",
+                "api_url": self.base_url,
+                "suggestion": "API server is not responding - check if it's running",
+                "details": "Request timed out after 5 seconds"
+            }
         except Exception as e:
             return {
                 "status": "unhealthy",
-                "error": str(e)
+                "error": f"Unexpected error: {str(e)}",
+                "api_url": self.base_url,
+                "suggestion": "Check API server status and configuration"
             }
     
     async def stream_chat(self, message: str, session_id: Optional[str] = None, user_id: str = "web_user"):
