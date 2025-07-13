@@ -74,12 +74,32 @@ echo ""
 if [ -f "/app/.env" ]; then
     echo "🔧 Loading environment variables from .env file..."
     export $(grep -v '^#' /app/.env | grep -v '^$' | xargs)
+elif [ -f "/app/.env.claw" ]; then
+    echo "🔧 Loading environment variables from .env.claw file..."
+    export $(grep -v '^#' /app/.env.claw | grep -v '^$' | xargs)
+else
+    echo "ℹ️  No .env file found, using system environment variables"
 fi
+
+# Show current environment status (without sensitive values)
+echo "🔍 Environment status:"
+echo "   DATABASE_URL: ${DATABASE_URL:+SET}"
+echo "   NEO4J_URI: ${NEO4J_URI:+SET}"
+echo "   NEO4J_USERNAME: ${NEO4J_USERNAME:+SET}"
+echo "   NEO4J_PASSWORD: ${NEO4J_PASSWORD:+SET}"
+echo "   LLM_API_KEY: ${LLM_API_KEY:+SET}"
+echo "   EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:+SET}"
 
 # Validate environment variables using Python script
 echo "🔍 Validating environment variables..."
 if ! python validate_environment.py; then
     echo "❌ Environment validation failed"
+    echo ""
+    echo "For Claw Cloud deployment:"
+    echo "  1. Set environment variables in the Claw Cloud console"
+    echo "  2. Use values from .env.claw file"
+    echo "  3. Make sure all required variables are set"
+    echo ""
     exit 1
 fi
 

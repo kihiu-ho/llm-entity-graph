@@ -52,8 +52,11 @@ tests/
 *.log
 logs/
 
-# Environment files (will be set via Claw Cloud)
-.env*
+# Environment files (exclude sensitive ones, but allow templates)
+.env.local
+.env.production
+.env.development
+# Note: .env and .env.claw are included for deployment
 
 # Database files (use cloud databases)
 *.db
