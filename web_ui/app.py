@@ -10,6 +10,9 @@ import json
 import asyncio
 import tempfile
 import shutil
+import threading
+import queue
+import time
 from datetime import datetime
 from typing import Dict, Any, Optional
 from pathlib import Path
@@ -182,17 +185,37 @@ def index():
 @app.route('/health')
 def health():
     """Check API health status."""
-    async def get_health():
-        return await client.check_health()
-    
-    # Run async function in sync context
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    loop = None
     try:
-        health_data = loop.run_until_complete(get_health())
+        # Create a new event loop for this request
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        async def get_health():
+            return await client.check_health()
+
+        # Run async function with timeout
+        health_data = loop.run_until_complete(
+            asyncio.wait_for(get_health(), timeout=10.0)
+        )
         return jsonify(health_data)
+    except asyncio.TimeoutError:
+        return jsonify({"status": "error", "message": "Health check timeout"}), 503
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 503
     finally:
-        loop.close()
+        if loop:
+            try:
+                # Clean up any remaining tasks
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                loop.close()
+            except Exception as e:
+                logger.warning(f"Error closing event loop: {e}")
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -206,40 +229,66 @@ def chat():
         return jsonify({"error": "Message is required"}), 400
 
     def generate():
-        """Generate streaming response."""
-        try:
-            # Create a new event loop for this request
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        """Generate streaming response using thread-based approach."""
+        chunk_queue = queue.Queue()
+        error_occurred = threading.Event()
 
-            async def stream_response():
+        def async_worker():
+            """Worker thread to handle async operations."""
+            try:
+                # Create event loop in this thread
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+                async def stream_chunks():
+                    try:
+                        async for chunk in client.stream_chat(message, session_id, user_id):
+                            chunk_queue.put(f"data: {json.dumps(chunk)}\n\n")
+                    except Exception as e:
+                        logger.error(f"Streaming error: {e}")
+                        chunk_queue.put(f"data: {json.dumps({'error': str(e), 'type': 'error'})}\n\n")
+                        error_occurred.set()
+                    finally:
+                        chunk_queue.put(None)  # Signal end of stream
+
+                # Run the async function
+                loop.run_until_complete(stream_chunks())
+
+            except Exception as e:
+                logger.error(f"Worker thread error: {e}")
+                chunk_queue.put(f"data: {json.dumps({'error': str(e), 'type': 'error'})}\n\n")
+                chunk_queue.put(None)
+                error_occurred.set()
+            finally:
                 try:
-                    async for chunk in client.stream_chat(message, session_id, user_id):
-                        yield f"data: {json.dumps(chunk)}\n\n"
-                except Exception as e:
-                    logger.error(f"Streaming error: {e}")
-                    yield f"data: {json.dumps({'error': str(e), 'type': 'error'})}\n\n"
+                    loop.close()
+                except:
+                    pass
 
-            # Run the async generator
-            async_gen = stream_response()
+        # Start the worker thread
+        worker = threading.Thread(target=async_worker, daemon=True)
+        worker.start()
+
+        # Yield chunks as they become available
+        try:
             while True:
                 try:
-                    chunk = loop.run_until_complete(async_gen.__anext__())
+                    # Get chunk with timeout to avoid hanging
+                    chunk = chunk_queue.get(timeout=30)
+                    if chunk is None:  # End of stream
+                        break
                     yield chunk
-                except StopAsyncIteration:
-                    break
-                except Exception as e:
-                    logger.error(f"Generator error: {e}")
-                    yield f"data: {json.dumps({'error': str(e), 'type': 'error'})}\n\n"
-                    break
+                except queue.Empty:
+                    # Timeout occurred, check if worker is still alive
+                    if not worker.is_alive():
+                        logger.error("Worker thread died unexpectedly")
+                        yield f"data: {json.dumps({'error': 'Stream timeout', 'type': 'error'})}\n\n"
+                        break
+                    # Send keepalive
+                    yield f"data: {json.dumps({'type': 'keepalive'})}\n\n"
         except Exception as e:
-            logger.error(f"Chat error: {e}")
+            logger.error(f"Generator error: {e}")
             yield f"data: {json.dumps({'error': str(e), 'type': 'error'})}\n\n"
-        finally:
-            try:
-                loop.close()
-            except:
-                pass
 
     return Response(
         generate(),

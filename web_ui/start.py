@@ -161,14 +161,17 @@ async def main():
             cmd = [
                 sys.executable, "-m", "gunicorn",
                 "--bind", f"{web_ui_host}:{web_ui_port}",
-                "--workers", "4",
+                "--workers", "2",  # Reduced workers for better resource management
                 "--worker-class", "sync",
-                "--timeout", "120",
+                "--timeout", "300",  # Increased timeout for long-running requests
+                "--graceful-timeout", "30",
                 "--keep-alive", "5",
-                "--max-requests", "1000",
-                "--max-requests-jitter", "100",
+                "--max-requests", "500",  # Reduced to prevent memory leaks
+                "--max-requests-jitter", "50",
+                "--worker-tmp-dir", "/dev/shm",  # Use shared memory for better performance
                 "--access-logfile", "-",
                 "--error-logfile", "-",
+                "--log-level", "info",
                 "app:app"
             ]
             subprocess.run(cmd)
