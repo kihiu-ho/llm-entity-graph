@@ -24,9 +24,8 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 # Copy application code
 COPY . .
 
-# Copy and set up startup script
-COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh
+# Ensure startup script exists and is executable
+RUN ls -la /app/start.sh && chmod +x /app/start.sh
 
 # Expose ports
 EXPOSE 5000 8058
@@ -35,5 +34,5 @@ EXPOSE 5000 8058
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:5000/health || exit 1
 
-# Start both services
-CMD ["/app/start.sh"]
+# Start both services using bash explicitly
+CMD ["/bin/bash", "/app/start.sh"]
