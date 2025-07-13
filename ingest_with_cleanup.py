@@ -19,6 +19,10 @@ from agent.models import IngestionConfig
 # Import the cleanup utility
 from cleanup_entity_labels import EntityLabelCleanup
 
+# Import graph utilities for validation
+from agent.graph_utils import graph_client, search_knowledge_graph
+from agent.tools import search_people_tool, search_companies_tool, PersonSearchInput, CompanySearchInput
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -121,10 +125,11 @@ async def ingest_with_cleanup(
     use_semantic_chunking: bool = True,
     extract_entities: bool = True,
     skip_graph_building: bool = False,
-    verbose: bool = False
+    verbose: bool = False,
+    validate_graph_alignment: bool = True
 ):
     """
-    Run document ingestion followed by Entity label cleanup.
+    Run document ingestion followed by Entity label cleanup and graph search validation.
 
     Args:
         documents_folder: Folder containing documents to ingest
@@ -136,8 +141,9 @@ async def ingest_with_cleanup(
         extract_entities: Whether to extract entities
         skip_graph_building: Whether to skip knowledge graph building
         verbose: Whether to enable verbose logging
+        validate_graph_alignment: Whether to validate graph search alignment after ingestion
     """
-    
+
     # Configure logging
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -147,7 +153,7 @@ async def ingest_with_cleanup(
         logger.info("🧹 Starting Neo4j database cleanup only")
         return await _cleanup_neo4j_only(verbose)
 
-    logger.info("🚀 Starting document ingestion with automatic Entity label cleanup")
+    logger.info("🚀 Starting document ingestion with automatic Entity label cleanup and validation")
 
     # Create ingestion configuration
     config = IngestionConfig(
@@ -167,55 +173,70 @@ async def ingest_with_cleanup(
 
     # Create cleanup utility
     cleanup = EntityLabelCleanup()
-    
+
     try:
         # Step 1: Run document ingestion
         logger.info("📄 Step 1: Running document ingestion...")
-        
+
         def progress_callback(current: int, total: int):
             logger.info(f"Progress: {current}/{total} documents processed")
-        
+
         results = await pipeline.ingest_documents(progress_callback)
-        
+
         # Log ingestion summary
         total_chunks = sum(r.chunks_created for r in results)
         total_entities = sum(r.entities_extracted for r in results)
         total_episodes = sum(r.relationships_created for r in results)
         total_errors = sum(len(r.errors) for r in results)
-        
+
         logger.info(f"✅ Ingestion complete: {len(results)} documents, {total_chunks} chunks, {total_entities} entities, {total_episodes} episodes")
-        
+
         if total_errors > 0:
             logger.warning(f"⚠️  {total_errors} errors occurred during ingestion")
         
         # Step 2: Run Entity label cleanup (only if graph building was enabled)
+        cleanup_performed = False
         if not skip_graph_building:
             logger.info("🧹 Step 2: Running Entity label cleanup...")
-            
+
             await cleanup.initialize()
-            
+
             # Check if cleanup is needed
             counts = await cleanup.check_entity_labels()
             total_entity_labels = counts["person_nodes_with_entity"] + counts["company_nodes_with_entity"]
-            
+
             if total_entity_labels > 0:
                 logger.info(f"Found {total_entity_labels} nodes with Entity labels to clean up")
-                
+
                 # Perform cleanup
                 cleanup_result = await cleanup.cleanup_entity_labels(verbose=verbose)
-                
+
                 logger.info(f"✅ Cleanup complete: {cleanup_result['total_nodes_fixed']} nodes fixed")
+                cleanup_performed = True
             else:
                 logger.info("✅ No Entity labels found - cleanup not needed")
         else:
             logger.info("⏭️  Skipping Entity label cleanup (graph building was disabled)")
-        
-        # Step 3: Final summary
+
+        # Step 3: Validate graph search alignment (if enabled)
+        validation_results = {}
+        if validate_graph_alignment and extract_entities and not skip_graph_building:
+            logger.info("🔍 Step 3: Validating graph search alignment...")
+            validation_results = await _validate_graph_search_alignment(verbose)
+
+            if validation_results.get("alignment_score", 0) < 0.8:
+                logger.warning(f"⚠️  Graph search alignment score is low: {validation_results.get('alignment_score', 0):.2f}")
+                logger.warning("Consider reviewing entity extraction and graph building processes")
+            else:
+                logger.info(f"✅ Graph search alignment validated: {validation_results.get('alignment_score', 0):.2f}")
+
+        # Step 4: Final summary
         logger.info("🎉 Document ingestion with cleanup completed successfully!")
-        
+
         return {
             "ingestion_results": results,
-            "cleanup_performed": not skip_graph_building,
+            "cleanup_performed": cleanup_performed,
+            "validation_results": validation_results,
             "total_documents": len(results),
             "total_chunks": total_chunks,
             "total_entities": total_entities,
@@ -231,6 +252,103 @@ async def ingest_with_cleanup(
         # Clean up resources
         await pipeline.close()
         await cleanup.close()
+
+
+async def _validate_graph_search_alignment(verbose: bool = True) -> Dict[str, Any]:
+    """
+    Validate that ingested entities are properly searchable through the agent's graph search.
+
+    Args:
+        verbose: Whether to log detailed information
+
+    Returns:
+        Dictionary with validation results and alignment score
+    """
+    validation_results = {
+        "alignment_score": 0.0,
+        "person_search_success": False,
+        "company_search_success": False,
+        "graph_search_success": False,
+        "total_people_found": 0,
+        "total_companies_found": 0,
+        "total_facts_found": 0,
+        "errors": []
+    }
+
+    try:
+        # Initialize graph client if needed
+        await graph_client.initialize()
+
+        # Test 1: Search for people using agent's search functionality
+        if verbose:
+            logger.info("Testing person search functionality...")
+
+        try:
+            people_input = PersonSearchInput(name_query="", limit=5)
+            people_results = await search_people_tool(people_input)
+            validation_results["total_people_found"] = len(people_results)
+            validation_results["person_search_success"] = len(people_results) > 0
+
+            if verbose:
+                logger.info(f"Found {len(people_results)} people through agent search")
+        except Exception as e:
+            validation_results["errors"].append(f"Person search failed: {str(e)}")
+            if verbose:
+                logger.warning(f"Person search test failed: {e}")
+
+        # Test 2: Search for companies using agent's search functionality
+        if verbose:
+            logger.info("Testing company search functionality...")
+
+        try:
+            company_input = CompanySearchInput(name_query="", limit=5)
+            company_results = await search_companies_tool(company_input)
+            validation_results["total_companies_found"] = len(company_results)
+            validation_results["company_search_success"] = len(company_results) > 0
+
+            if verbose:
+                logger.info(f"Found {len(company_results)} companies through agent search")
+        except Exception as e:
+            validation_results["errors"].append(f"Company search failed: {str(e)}")
+            if verbose:
+                logger.warning(f"Company search test failed: {e}")
+
+        # Test 3: Test general graph search functionality
+        if verbose:
+            logger.info("Testing general graph search functionality...")
+
+        try:
+            graph_results = await search_knowledge_graph("relationships")
+            validation_results["total_facts_found"] = len(graph_results)
+            validation_results["graph_search_success"] = len(graph_results) > 0
+
+            if verbose:
+                logger.info(f"Found {len(graph_results)} facts through graph search")
+        except Exception as e:
+            validation_results["errors"].append(f"Graph search failed: {str(e)}")
+            if verbose:
+                logger.warning(f"Graph search test failed: {e}")
+
+        # Calculate alignment score
+        score_components = []
+        if validation_results["person_search_success"]:
+            score_components.append(0.4)
+        if validation_results["company_search_success"]:
+            score_components.append(0.4)
+        if validation_results["graph_search_success"]:
+            score_components.append(0.2)
+
+        validation_results["alignment_score"] = sum(score_components)
+
+        if verbose:
+            logger.info(f"Graph search alignment score: {validation_results['alignment_score']:.2f}")
+
+    except Exception as e:
+        validation_results["errors"].append(f"Validation process failed: {str(e)}")
+        if verbose:
+            logger.error(f"Validation process failed: {e}")
+
+    return validation_results
 
 
 async def main():
@@ -276,6 +394,8 @@ Examples:
                        help="Disable entity extraction")
     parser.add_argument("--fast", "-f", action="store_true",
                        help="Fast mode: skip knowledge graph building (and cleanup)")
+    parser.add_argument("--no-validation", action="store_true",
+                       help="Skip graph search alignment validation")
     parser.add_argument("--verbose", "-v", action="store_true",
                        help="Enable verbose logging")
     
@@ -304,6 +424,7 @@ Examples:
             use_semantic_chunking=not args.no_semantic,
             extract_entities=not args.no_entities,
             skip_graph_building=args.fast,
+            validate_graph_alignment=not args.no_validation,
             verbose=args.verbose
         )
         

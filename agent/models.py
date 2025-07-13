@@ -81,6 +81,8 @@ class GraphSearchResult(BaseModel):
     valid_at: Optional[str] = None
     invalid_at: Optional[str] = None
     source_node_uuid: Optional[str] = None
+    search_variation: Optional[str] = None  # Which search variation found this result
+    relevance_score: Optional[float] = None  # Relevance score for relationship queries
 
 
 class EntityRelationship(BaseModel):

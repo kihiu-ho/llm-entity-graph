@@ -385,17 +385,23 @@ class GraphitiClient:
             # Use Graphiti's search method (simplified parameters)
             results = await self.graphiti.search(query)
             
-            # Convert results to dictionaries
-            return [
-                {
-                    "fact": result.fact,
-                    "uuid": str(result.uuid),
-                    "valid_at": str(result.valid_at) if hasattr(result, 'valid_at') and result.valid_at else None,
-                    "invalid_at": str(result.invalid_at) if hasattr(result, 'invalid_at') and result.invalid_at else None,
-                    "source_node_uuid": str(result.source_node_uuid) if hasattr(result, 'source_node_uuid') and result.source_node_uuid else None
-                }
-                for result in results
-            ]
+            # Convert results to dictionaries, handling both dict and object formats
+            converted_results = []
+            for result in results:
+                if isinstance(result, dict):
+                    # Already a dictionary
+                    converted_results.append(result)
+                else:
+                    # Object format, convert to dictionary
+                    converted_results.append({
+                        "fact": getattr(result, "fact", ""),
+                        "uuid": str(getattr(result, "uuid", "")),
+                        "valid_at": str(result.valid_at) if hasattr(result, 'valid_at') and result.valid_at else None,
+                        "invalid_at": str(result.invalid_at) if hasattr(result, 'invalid_at') and result.invalid_at else None,
+                        "source_node_uuid": str(result.source_node_uuid) if hasattr(result, 'source_node_uuid') and result.source_node_uuid else None
+                    })
+
+            return converted_results
             
         except Exception as e:
             logger.error(f"Graph search failed: {e}")
@@ -436,17 +442,27 @@ class GraphitiClient:
             # Filter and format results
             node_results = []
             for result in results[:limit]:
+                # Handle both dict and object formats
+                if isinstance(result, dict):
+                    fact = result.get("fact", "")
+                    uuid = result.get("uuid", "")
+                    source_node_uuid = result.get("source_node_uuid", "")
+                else:
+                    fact = getattr(result, "fact", "")
+                    uuid = str(getattr(result, "uuid", ""))
+                    source_node_uuid = str(getattr(result, "source_node_uuid", ""))
+
                 # Check if this is a node episode
-                if hasattr(result, 'source_node_uuid') and result.source_node_uuid:
+                if source_node_uuid:
                     # Try to extract node information from the fact
-                    node_info = self._extract_entity_from_fact(result.fact)
+                    node_info = self._extract_entity_from_fact(fact)
                     if node_info:
                         node_results.append({
                             "node_name": node_info.get("name"),
                             "node_type": node_info.get("type"),
-                            "fact": result.fact,
-                            "uuid": str(result.uuid),
-                            "source_node_uuid": str(result.source_node_uuid)
+                            "fact": fact,
+                            "uuid": uuid,
+                            "source_node_uuid": source_node_uuid
                         })
 
             return node_results
@@ -461,7 +477,7 @@ class GraphitiClient:
         relationship_types: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """
-        Get relationships for a specific node.
+        Get relationships for a specific node with enhanced extraction.
 
         Args:
             entity_name: Name of the node
@@ -473,28 +489,65 @@ class GraphitiClient:
         if not self._initialized:
             await self.initialize()
 
-        # Search for relationships involving this node
-        query = f"relationships involving {entity_name}"
-        if relationship_types:
-            query += f" of type {', '.join(relationship_types)}"
+        # Use multiple search strategies for better coverage
+        search_queries = [
+            f"relationships involving {entity_name}",
+            f"connections of {entity_name}",
+            f"{entity_name} relationships",
+            f"facts about {entity_name}",
+            f"{entity_name} works at",
+            f"{entity_name} employed by",
+            f"{entity_name} executive of",
+            f"{entity_name} director of"
+        ]
 
         try:
-            results = await self.graphiti.search(query)
+            all_relationships = []
+            seen_facts = set()
 
-            relationships = []
-            for result in results:
-                # Extract relationship information from the fact
-                rel_info = self._extract_relationship_from_fact(result.fact, entity_name)
-                if rel_info:
-                    relationships.append({
-                        "relationship_type": rel_info.get("type"),
-                        "related_node": rel_info.get("related_entity"),
-                        "direction": rel_info.get("direction"),  # "outgoing" or "incoming"
-                        "fact": result.fact,
-                        "uuid": str(result.uuid)
-                    })
+            for query in search_queries:
+                try:
+                    results = await self.graphiti.search(query)
 
-            return relationships
+                    for result in results:
+                        # Handle both dict and object formats
+                        if isinstance(result, dict):
+                            fact = result.get("fact", "")
+                            uuid = result.get("uuid", "")
+                        else:
+                            fact = getattr(result, "fact", "")
+                            uuid = str(getattr(result, "uuid", ""))
+
+                        # Skip duplicate facts
+                        if fact in seen_facts:
+                            continue
+                        seen_facts.add(fact)
+
+                        # Use enhanced extraction
+                        relationships = self._extract_relationships_enhanced(fact, entity_name, uuid)
+
+                        for rel in relationships:
+                            # Filter by relationship types if specified
+                            if relationship_types and rel.get("relationship_type") not in relationship_types:
+                                continue
+                            all_relationships.append(rel)
+
+                except Exception as e:
+                    logger.warning(f"Search query '{query}' failed: {e}")
+                    continue
+
+            # Remove duplicates
+            unique_relationships = []
+            seen_rels = set()
+
+            for rel in all_relationships:
+                rel_key = f"{rel.get('source_entity', '')}_{rel.get('relationship_type', '')}_{rel.get('target_entity', '')}"
+                if rel_key not in seen_rels:
+                    seen_rels.add(rel_key)
+                    unique_relationships.append(rel)
+
+            logger.info(f"Found {len(unique_relationships)} unique relationships for {entity_name}")
+            return unique_relationships
 
         except Exception as e:
             logger.error(f"Relationship search failed: {e}")
@@ -525,7 +578,7 @@ class GraphitiClient:
             return None
 
     def _extract_relationship_from_fact(self, fact: str, entity_name: str) -> Optional[Dict[str, Any]]:
-        """Extract relationship information from a fact string."""
+        """Extract relationship information from a fact string (legacy method)."""
         try:
             # Simple pattern matching for relationship facts
             if fact.startswith("Relationship:"):
@@ -559,6 +612,314 @@ class GraphitiClient:
             logger.error(f"Failed to extract relationship from fact: {e}")
             return None
 
+    def _extract_relationships_enhanced(self, fact: str, entity_name: str, fact_uuid: str) -> List[Dict[str, Any]]:
+        """
+        Enhanced relationship extraction that handles multiple fact formats.
+        Uses the same logic as the tools module for consistency with ingestion format.
+
+        Args:
+            fact: The fact text from Graphiti
+            entity_name: The entity we're searching for
+            fact_uuid: UUID of the fact
+
+        Returns:
+            List of extracted relationships
+        """
+        try:
+            # Import the Graphiti-specific extraction function from tools module for consistency
+            from ..agent.tools import _extract_relationships_from_graphiti_fact
+            return _extract_relationships_from_graphiti_fact(fact, entity_name, fact_uuid)
+        except ImportError:
+            # Fallback to local implementation if import fails
+            logger.warning("Could not import extraction function from tools module, using local implementation")
+            return self._extract_relationships_enhanced_local(fact, entity_name, fact_uuid)
+
+    def _extract_relationships_enhanced_local(self, fact: str, entity_name: str, fact_uuid: str) -> List[Dict[str, Any]]:
+        """
+        Local implementation of enhanced relationship extraction.
+
+        Args:
+            fact: The fact text from Graphiti
+            entity_name: The entity we're searching for
+            fact_uuid: UUID of the fact
+
+        Returns:
+            List of extracted relationships
+        """
+        relationships = []
+
+        try:
+            import re
+
+            # Split fact into lines for analysis
+            lines = fact.split('\n')
+            fact_lower = fact.lower()
+            entity_lower = entity_name.lower()
+
+            # Skip if entity is not mentioned in the fact
+            if entity_name and entity_lower not in fact_lower:
+                return relationships
+
+            # Pattern 1: Direct relationship format "Relationship: A rel_type B"
+            for line in lines:
+                if line.startswith("Relationship:"):
+                    rel_line = line.replace("Relationship:", "").strip()
+                    rel_info = self._parse_relationship_line_enhanced(rel_line, entity_name)
+                    if rel_info:
+                        rel_info.update({
+                            "fact": fact,
+                            "uuid": fact_uuid,
+                            "extraction_method": "direct_relationship"
+                        })
+                        relationships.append(rel_info)
+
+            # Pattern 2: Structured entity facts (PERSON:/COMPANY: format)
+            current_entity = None
+            current_entity_type = None
+
+            for line in lines:
+                line = line.strip()
+                if line.startswith("PERSON:"):
+                    current_entity = line.replace("PERSON:", "").strip()
+                    current_entity_type = "person"
+                elif line.startswith("COMPANY:"):
+                    current_entity = line.replace("COMPANY:", "").strip()
+                    current_entity_type = "company"
+                elif current_entity and ":" in line:
+                    # Extract structured information
+                    key, value = line.split(":", 1)
+                    key = key.strip()
+                    value = value.strip()
+
+                    # Handle employment relationships
+                    if key == "Current company" and current_entity_type == "person":
+                        if entity_lower in current_entity.lower():
+                            relationships.append({
+                                "source_entity": current_entity,
+                                "target_entity": value,
+                                "relationship_type": "Employee_OF",
+                                "direction": "outgoing",
+                                "fact": fact,
+                                "uuid": fact_uuid,
+                                "extraction_method": "structured_entity"
+                            })
+                        elif entity_lower in value.lower():
+                            relationships.append({
+                                "source_entity": value,
+                                "target_entity": current_entity,
+                                "relationship_type": "Employs",
+                                "direction": "incoming",
+                                "fact": fact,
+                                "uuid": fact_uuid,
+                                "extraction_method": "structured_entity"
+                            })
+
+                    elif key == "Current position" and current_entity_type == "person":
+                        # Determine executive level from position
+                        exec_keywords = ["ceo", "cto", "cfo", "director", "executive", "chairman", "president", "chief"]
+                        is_executive = any(keyword in value.lower() for keyword in exec_keywords)
+
+                        if entity_lower in current_entity.lower() and is_executive:
+                            relationships.append({
+                                "source_entity": current_entity,
+                                "target_entity": "Unknown Company",
+                                "relationship_type": "Executive_OF",
+                                "direction": "outgoing",
+                                "details": value,
+                                "fact": fact,
+                                "uuid": fact_uuid,
+                                "extraction_method": "position_based"
+                            })
+
+                    elif key == "Key executives" and current_entity_type == "company":
+                        # Extract executive relationships from company facts
+                        executives = [exec.strip() for exec in value.split(",")]
+                        for exec_name in executives:
+                            if entity_lower in exec_name.lower():
+                                relationships.append({
+                                    "source_entity": exec_name,
+                                    "target_entity": current_entity,
+                                    "relationship_type": "Executive_OF",
+                                    "direction": "outgoing",
+                                    "fact": fact,
+                                    "uuid": fact_uuid,
+                                    "extraction_method": "executive_list"
+                                })
+                            elif entity_lower in current_entity.lower():
+                                relationships.append({
+                                    "source_entity": current_entity,
+                                    "target_entity": exec_name,
+                                    "relationship_type": "Employs",
+                                    "direction": "incoming",
+                                    "details": "Executive",
+                                    "fact": fact,
+                                    "uuid": fact_uuid,
+                                    "extraction_method": "executive_list"
+                                })
+
+            # Pattern 3: Natural language relationship patterns
+            relationship_patterns = [
+                # Employment patterns
+                (r"(\w+(?:\s+\w+)*)\s+(?:is|was|serves as|works as)\s+(?:the\s+)?([^.]+?)\s+(?:at|of|for)\s+([^.]+)", "employment"),
+                (r"(\w+(?:\s+\w+)*)\s+(?:CEO|CTO|CFO|Director|Executive|Chairman|President)\s+(?:of|at)\s+([^.]+)", "executive"),
+                (r"([^.]+?)\s+employs?\s+(\w+(?:\s+\w+)*)\s+as\s+([^.]+)", "employment_reverse"),
+                # Ownership patterns
+                (r"(\w+(?:\s+\w+)*)\s+owns?\s+([^.]+)", "ownership"),
+                (r"([^.]+?)\s+(?:is\s+)?owned\s+by\s+(\w+(?:\s+\w+)*)", "ownership_reverse"),
+                # Corporate structure patterns
+                (r"([^.]+?)\s+(?:is\s+a\s+)?subsidiary\s+of\s+([^.]+)", "subsidiary"),
+                (r"([^.]+?)\s+(?:is\s+a\s+)?shareholder\s+(?:in|of)\s+([^.]+)", "shareholder")
+            ]
+
+            for pattern, rel_category in relationship_patterns:
+                matches = re.finditer(pattern, fact, re.IGNORECASE)
+                for match in matches:
+                    groups = match.groups()
+                    if len(groups) >= 2:
+                        entity1 = groups[0].strip()
+                        entity2 = groups[1].strip() if len(groups) == 2 else groups[2].strip()
+                        position = groups[1].strip() if len(groups) == 3 and rel_category == "employment" else None
+
+                        # Determine relationship type based on category
+                        if rel_category == "employment":
+                            rel_type = "Executive_OF" if position and any(exec_word in position.lower() for exec_word in ["ceo", "cto", "cfo", "director", "executive", "chairman", "president"]) else "Employee_OF"
+                        elif rel_category == "executive":
+                            rel_type = "Executive_OF"
+                        elif rel_category == "employment_reverse":
+                            rel_type = "Employs"
+                            entity1, entity2 = entity2, entity1  # Swap for correct direction
+                        elif rel_category == "ownership":
+                            rel_type = "Owns"
+                        elif rel_category == "ownership_reverse":
+                            rel_type = "Owned_BY"
+                        elif rel_category == "subsidiary":
+                            rel_type = "Subsidiary_OF"
+                        elif rel_category == "shareholder":
+                            rel_type = "Shareholder_OF"
+                        else:
+                            rel_type = "Related_TO"
+
+                        # Check if this involves our entity
+                        if (entity_lower in entity1.lower() or entity_lower in entity2.lower()):
+                            if entity_lower in entity1.lower():
+                                direction = "outgoing"
+                            else:
+                                direction = "incoming"
+
+                            rel_data = {
+                                "source_entity": entity1,
+                                "target_entity": entity2,
+                                "relationship_type": rel_type,
+                                "direction": direction,
+                                "fact": fact,
+                                "uuid": fact_uuid,
+                                "extraction_method": f"pattern_{rel_category}"
+                            }
+
+                            if position:
+                                rel_data["details"] = position
+
+                            relationships.append(rel_data)
+
+            # Pattern 4: Simple keyword-based extraction as fallback
+            if not relationships and entity_name:  # Only if no other patterns matched
+                keyword_patterns = {
+                    "works at": "Employee_OF",
+                    "employed by": "Employee_OF",
+                    "ceo of": "CEO_OF",
+                    "director of": "Director_OF",
+                    "chairman of": "Chairman_OF",
+                    "president of": "President_OF",
+                    "executive of": "Executive_OF"
+                }
+
+                for keyword, rel_type in keyword_patterns.items():
+                    if keyword in fact_lower:
+                        # Try to extract the related entity
+                        keyword_pos = fact_lower.find(keyword)
+                        entity_pos = fact_lower.find(entity_lower)
+
+                        if entity_pos < keyword_pos:
+                            # Entity comes before keyword
+                            after_keyword = fact[keyword_pos + len(keyword):].strip()
+                            target = after_keyword.split('.')[0].split(',')[0].split('\n')[0].strip()
+                            if target and len(target) > 1:
+                                relationships.append({
+                                    "source_entity": entity_name,
+                                    "target_entity": target,
+                                    "relationship_type": rel_type,
+                                    "direction": "outgoing",
+                                    "fact": fact,
+                                    "uuid": fact_uuid,
+                                    "extraction_method": "keyword_fallback"
+                                })
+
+        except Exception as e:
+            logger.error(f"Failed to extract relationships from fact: {e}")
+
+        return relationships
+
+    def _parse_relationship_line_enhanced(self, rel_line: str, entity_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Enhanced parsing of relationship line in format "Source relationship_type Target".
+
+        Args:
+            rel_line: The relationship line text
+            entity_name: The entity we're searching for
+
+        Returns:
+            Parsed relationship info or None
+        """
+        try:
+            # Split on common relationship patterns
+            parts = rel_line.split()
+            if len(parts) < 3:
+                return None
+
+            # Try to identify source, relationship, target
+            # Handle multi-word entity names better
+            entity_lower = entity_name.lower()
+
+            # Find the relationship type (usually in the middle)
+            # Look for common relationship patterns
+            rel_type_candidates = []
+            for i, part in enumerate(parts):
+                if any(rel_word in part.lower() for rel_word in ["_of", "_by", "_with", "_to", "_for"]):
+                    rel_type_candidates.append((i, part))
+
+            if rel_type_candidates:
+                # Use the first relationship type found
+                rel_idx, relationship_type = rel_type_candidates[0]
+                source_entity = " ".join(parts[:rel_idx])
+                target_entity = " ".join(parts[rel_idx + 1:])
+            else:
+                # Fallback to simple parsing
+                source_entity = parts[0]
+                relationship_type = parts[1]
+                target_entity = " ".join(parts[2:])
+
+            # Determine direction relative to the queried entity
+            if entity_lower in source_entity.lower():
+                return {
+                    "source_entity": source_entity,
+                    "target_entity": target_entity,
+                    "relationship_type": relationship_type,
+                    "direction": "outgoing"
+                }
+            elif entity_lower in target_entity.lower():
+                return {
+                    "source_entity": source_entity,
+                    "target_entity": target_entity,
+                    "relationship_type": relationship_type,
+                    "direction": "incoming"
+                }
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to parse relationship line '{rel_line}': {e}")
+            return None
+
     async def get_related_entities(
         self,
         entity_name: str,
@@ -587,14 +948,24 @@ class GraphitiClient:
         facts = []
         
         for result in results:
+            # Handle both dict and object formats
+            if isinstance(result, dict):
+                fact = result.get("fact", "")
+                uuid = result.get("uuid", "")
+                valid_at = result.get("valid_at")
+            else:
+                fact = getattr(result, "fact", "")
+                uuid = str(getattr(result, "uuid", ""))
+                valid_at = str(result.valid_at) if hasattr(result, 'valid_at') and result.valid_at else None
+
             facts.append({
-                "fact": result.fact,
-                "uuid": str(result.uuid),
-                "valid_at": str(result.valid_at) if hasattr(result, 'valid_at') and result.valid_at else None
+                "fact": fact,
+                "uuid": uuid,
+                "valid_at": valid_at
             })
-            
+
             # Simple entity extraction from fact text (could be enhanced)
-            if entity_name.lower() in result.fact.lower():
+            if entity_name.lower() in fact.lower():
                 related_entities.add(entity_name)
         
         return {
@@ -628,11 +999,23 @@ class GraphitiClient:
         
         timeline = []
         for result in results:
+            # Handle both dict and object formats
+            if isinstance(result, dict):
+                fact = result.get("fact", "")
+                uuid = result.get("uuid", "")
+                valid_at = result.get("valid_at")
+                invalid_at = result.get("invalid_at")
+            else:
+                fact = getattr(result, "fact", "")
+                uuid = str(getattr(result, "uuid", ""))
+                valid_at = str(result.valid_at) if hasattr(result, 'valid_at') and result.valid_at else None
+                invalid_at = str(result.invalid_at) if hasattr(result, 'invalid_at') and result.invalid_at else None
+
             timeline.append({
-                "fact": result.fact,
-                "uuid": str(result.uuid),
-                "valid_at": str(result.valid_at) if hasattr(result, 'valid_at') and result.valid_at else None,
-                "invalid_at": str(result.invalid_at) if hasattr(result, 'invalid_at') and result.invalid_at else None
+                "fact": fact,
+                "uuid": uuid,
+                "valid_at": valid_at,
+                "invalid_at": invalid_at
             })
         
         # Sort by valid_at if available

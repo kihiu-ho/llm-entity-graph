@@ -452,6 +452,66 @@ async def hybrid_search(
         ]
 
 
+async def enhanced_hybrid_search(
+    embedding: List[float],
+    query_text: str,
+    original_query: str,
+    limit: int = 10,
+    text_weight: float = 0.3,
+    boost_recent_documents: bool = False
+) -> List[Dict[str, Any]]:
+    """
+    Perform enhanced hybrid search with advanced scoring and features.
+
+    Args:
+        embedding: Query embedding vector
+        query_text: Processed query text (may be expanded)
+        original_query: Original query text
+        limit: Maximum number of results
+        text_weight: Weight for text similarity (0-1)
+        boost_recent_documents: Whether to boost recent documents
+
+    Returns:
+        List of matching chunks with enhanced scoring
+    """
+    async with db_pool.acquire() as conn:
+        # Convert embedding to PostgreSQL vector string format
+        embedding_str = '[' + ','.join(map(str, embedding)) + ']'
+
+        # Use enhanced hybrid search function
+        results = await conn.fetch(
+            "SELECT * FROM enhanced_hybrid_search($1::vector, $2, $3, $4, $5)",
+            embedding_str,
+            query_text,
+            limit,
+            text_weight,
+            boost_recent_documents
+        )
+
+        enhanced_results = []
+        for row in results:
+            result = {
+                "chunk_id": row["chunk_id"],
+                "document_id": row["document_id"],
+                "content": row["content"],
+                "enhanced_score": row["enhanced_score"],
+                "vector_similarity": row["vector_similarity"],
+                "text_similarity": row["text_similarity"],
+                "metadata": json.loads(row["metadata"]),
+                "document_title": row["document_title"],
+                "document_source": row["document_source"],
+                "relevance_factors": {
+                    "base_hybrid_score": row.get("base_score", 0),
+                    "recency_boost": row.get("recency_boost", 0) if boost_recent_documents else 0,
+                    "content_length_factor": row.get("content_length_factor", 1.0),
+                    "query_term_density": row.get("query_term_density", 0)
+                }
+            }
+            enhanced_results.append(result)
+
+        return enhanced_results
+
+
 # Chunk Management Functions
 async def get_document_chunks(document_id: str) -> List[Dict[str, Any]]:
     """

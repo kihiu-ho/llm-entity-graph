@@ -60,10 +60,7 @@ class AgenticRAGCLI:
   Simply type your question and press Enter to chat with the agent.
   The agent has access to vector search, knowledge graph, and hybrid search tools.
   
-{Colors.BOLD}Examples:{Colors.END}
-  - "What are Google's AI initiatives?"
-  - "Tell me about Microsoft's partnerships with OpenAI"
-  - "Compare OpenAI and Anthropic's approaches to AI safety"
+
 """
         print(help_text)
     

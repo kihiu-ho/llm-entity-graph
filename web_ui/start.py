@@ -118,6 +118,12 @@ async def main():
         help='Run in production mode with gunicorn'
     )
 
+    parser.add_argument(
+        '--production',
+        action='store_true',
+        help='Run in production mode with gunicorn'
+    )
+
     args = parser.parse_args()
 
     # Update configuration via environment variables

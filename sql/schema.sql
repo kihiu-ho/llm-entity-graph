@@ -160,6 +160,128 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION enhanced_hybrid_search(
+    query_embedding vector(1536),
+    query_text TEXT,
+    match_count INT DEFAULT 10,
+    text_weight FLOAT DEFAULT 0.3,
+    boost_recent BOOLEAN DEFAULT FALSE
+)
+RETURNS TABLE (
+    chunk_id UUID,
+    document_id UUID,
+    content TEXT,
+    enhanced_score FLOAT,
+    base_score FLOAT,
+    vector_similarity FLOAT,
+    text_similarity FLOAT,
+    recency_boost FLOAT,
+    content_length_factor FLOAT,
+    query_term_density FLOAT,
+    metadata JSONB,
+    document_title TEXT,
+    document_source TEXT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    WITH vector_results AS (
+        SELECT
+            c.id AS chunk_id,
+            c.document_id,
+            c.content,
+            1 - (c.embedding <=> query_embedding) AS vector_sim,
+            c.metadata,
+            d.title AS doc_title,
+            d.source AS doc_source,
+            d.created_at
+        FROM chunks c
+        JOIN documents d ON c.document_id = d.id
+        WHERE c.embedding IS NOT NULL
+    ),
+    text_results AS (
+        SELECT
+            c.id AS chunk_id,
+            c.document_id,
+            c.content,
+            ts_rank_cd(to_tsvector('english', c.content), plainto_tsquery('english', query_text)) AS text_sim,
+            c.metadata,
+            d.title AS doc_title,
+            d.source AS doc_source,
+            d.created_at
+        FROM chunks c
+        JOIN documents d ON c.document_id = d.id
+        WHERE to_tsvector('english', c.content) @@ plainto_tsquery('english', query_text)
+    ),
+    combined_results AS (
+        SELECT
+            COALESCE(v.chunk_id, t.chunk_id) AS chunk_id,
+            COALESCE(v.document_id, t.document_id) AS document_id,
+            COALESCE(v.content, t.content) AS content,
+            COALESCE(v.vector_sim, 0) AS vector_sim,
+            COALESCE(t.text_sim, 0) AS text_sim,
+            COALESCE(v.metadata, t.metadata) AS metadata,
+            COALESCE(v.doc_title, t.doc_title) AS doc_title,
+            COALESCE(v.doc_source, t.doc_source) AS doc_source,
+            COALESCE(v.created_at, t.created_at) AS created_at
+        FROM vector_results v
+        FULL OUTER JOIN text_results t ON v.chunk_id = t.chunk_id
+    ),
+    enhanced_results AS (
+        SELECT
+            chunk_id,
+            document_id,
+            content,
+            -- Base hybrid score
+            (vector_sim * (1 - text_weight) + text_sim * text_weight) AS base_score,
+            vector_sim,
+            text_sim,
+            -- Recency boost (newer documents get higher scores)
+            CASE
+                WHEN boost_recent THEN
+                    GREATEST(0, 1 - EXTRACT(DAYS FROM (NOW() - created_at)) / 365.0) * 0.1
+                ELSE 0
+            END AS recency_boost,
+            -- Content length factor (moderate length preferred)
+            CASE
+                WHEN LENGTH(content) BETWEEN 200 AND 2000 THEN 1.1
+                WHEN LENGTH(content) BETWEEN 100 AND 200 THEN 1.05
+                WHEN LENGTH(content) > 2000 THEN 0.95
+                ELSE 1.0
+            END AS content_length_factor,
+            -- Query term density
+            (
+                SELECT COUNT(*)::FLOAT / GREATEST(1, array_length(string_to_array(content, ' '), 1))
+                FROM unnest(string_to_array(lower(query_text), ' ')) AS query_term
+                WHERE position(query_term IN lower(content)) > 0
+            ) AS query_term_density,
+            metadata,
+            doc_title,
+            doc_source
+        FROM combined_results
+    )
+    SELECT
+        er.chunk_id,
+        er.document_id,
+        er.content,
+        -- Enhanced score combining all factors
+        (er.base_score + er.recency_boost) * er.content_length_factor + (er.query_term_density * 0.1) AS enhanced_score,
+        er.base_score,
+        er.vector_sim AS vector_similarity,
+        er.text_sim AS text_similarity,
+        er.recency_boost,
+        er.content_length_factor,
+        er.query_term_density,
+        er.metadata,
+        er.doc_title AS document_title,
+        er.doc_source AS document_source
+    FROM enhanced_results er
+    ORDER BY enhanced_score DESC
+    LIMIT match_count;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION get_document_chunks(doc_id UUID)
 RETURNS TABLE (
     chunk_id UUID,
