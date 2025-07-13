@@ -24,8 +24,10 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 # Copy application code
 COPY . .
 
-# Ensure startup script exists and is executable
-RUN ls -la /app/start.sh && chmod +x /app/start.sh
+# Fix line endings and ensure startup script exists and is executable
+RUN sed -i 's/\r$//' /app/start.sh && \
+    ls -la /app/start.sh && \
+    chmod +x /app/start.sh
 
 # Expose ports
 EXPOSE 5000 8058
