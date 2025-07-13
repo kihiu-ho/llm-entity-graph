@@ -13,7 +13,7 @@ from typing import List, Dict, Any
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from agent.tools import get_enhanced_entity_relationships
-from agent.graph_utils import graph_client, initialize_graph
+from agent.graph_utils import get_graph_client, initialize_graph
 
 # Set up logging
 logging.basicConfig(

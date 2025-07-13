@@ -93,8 +93,9 @@ async def test_agent_relationship_extraction():
                     
                     # Try a basic search to see if there are any facts at all
                     logger.info("Checking if any facts exist for this entity...")
-                    from agent.graph_utils import graph_client
-                    await graph_client.initialize()
+                    from agent.graph_utils import get_graph_client
+                    client = get_graph_client()
+                    await client.initialize()
                     
                     basic_results = await graph_client.search(f"{test_case['entity_name']}")
                     if basic_results:

@@ -1095,18 +1095,28 @@ class GraphitiClient:
             logger.warning("Reinitialized Graphiti client (fresh indices created)")
 
 
-# Global Graphiti client instance
-graph_client = GraphitiClient()
+# Global Graphiti client instance (lazy initialization)
+graph_client: Optional[GraphitiClient] = None
+
+
+def get_graph_client() -> GraphitiClient:
+    """Get or create the global graph client instance."""
+    global graph_client
+    if graph_client is None:
+        graph_client = GraphitiClient()
+    return graph_client
 
 
 async def initialize_graph():
     """Initialize graph client."""
-    await graph_client.initialize()
+    client = get_graph_client()
+    await client.initialize()
 
 
 async def close_graph():
     """Close graph client."""
-    await graph_client.close()
+    client = get_graph_client()
+    await client.close()
 
 
 # Convenience functions for common operations
@@ -1131,7 +1141,7 @@ async def add_to_knowledge_graph(
     if not episode_id:
         episode_id = f"episode_{datetime.now(timezone.utc).isoformat()}"
     
-    await graph_client.add_episode(
+    await get_graph_client().add_episode(
         episode_id=episode_id,
         content=content,
         source=source,
@@ -1153,7 +1163,7 @@ async def search_knowledge_graph(
     Returns:
         Search results
     """
-    return await graph_client.search(query)
+    return await get_graph_client().search(query)
 
 
 async def get_entity_relationships(
@@ -1170,7 +1180,7 @@ async def get_entity_relationships(
     Returns:
         Entity relationships
     """
-    return await graph_client.get_related_entities(entity, depth=depth)
+    return await get_graph_client().get_related_entities(entity, depth=depth)
 
 
 async def add_person_to_graph(
@@ -1203,7 +1213,7 @@ async def add_person_to_graph(
         **kwargs
     )
 
-    return await graph_client.add_entity(person, source_document)
+    return await get_graph_client().add_entity(person, source_document)
 
 
 async def add_company_to_graph(
@@ -1236,7 +1246,7 @@ async def add_company_to_graph(
         **kwargs
     )
 
-    return await graph_client.add_entity(company, source_document)
+    return await get_graph_client().add_entity(company, source_document)
 
 
 async def add_relationship_to_graph(
@@ -1272,7 +1282,7 @@ async def add_relationship_to_graph(
         **kwargs
     )
 
-    return await graph_client.add_relationship(relationship, source_document)
+    return await get_graph_client().add_relationship(relationship, source_document)
 
 
 async def search_people(
@@ -1305,7 +1315,7 @@ async def search_people(
     query = " ".join(query_parts)
 
     try:
-        results = await graph_client.search(query)
+        results = await get_graph_client().search(query)
         return results[:limit]
     except Exception as e:
         logger.error(f"Person search failed: {e}")
@@ -1342,7 +1352,7 @@ async def search_companies(
     query = " ".join(query_parts)
 
     try:
-        results = await graph_client.search(query)
+        results = await get_graph_client().search(query)
         return results[:limit]
     except Exception as e:
         logger.error(f"Company search failed: {e}")
@@ -1363,7 +1373,7 @@ async def get_person_relationships(
     Returns:
         List of relationships
     """
-    return await graph_client.get_entity_relationships(person_name, relationship_types)
+    return await get_graph_client().get_entity_relationships(person_name, relationship_types)
 
 
 async def get_company_relationships(
@@ -1380,7 +1390,7 @@ async def get_company_relationships(
     Returns:
         List of relationships
     """
-    return await graph_client.get_entity_relationships(company_name, relationship_types)
+    return await get_graph_client().get_entity_relationships(company_name, relationship_types)
 
 
 async def test_graph_connection() -> bool:
@@ -1391,8 +1401,9 @@ async def test_graph_connection() -> bool:
         True if connection successful
     """
     try:
-        await graph_client.initialize()
-        stats = await graph_client.get_graph_statistics()
+        client = get_graph_client()
+        await client.initialize()
+        stats = await client.get_graph_statistics()
         logger.info(f"Graph connection successful. Stats: {stats}")
         return True
     except Exception as e:

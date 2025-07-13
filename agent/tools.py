@@ -25,7 +25,7 @@ from .graph_utils import (
     search_companies,
     get_person_relationships,
     get_company_relationships,
-    graph_client
+    get_graph_client
 )
 from .entity_models import EntityType, PersonType, CompanyType
 from .models import ChunkResult, GraphSearchResult, DocumentMetadata
@@ -517,7 +517,7 @@ async def get_entity_timeline_tool(input_data: EntityTimelineInput) -> List[Dict
             end_date = datetime.fromisoformat(input_data.end_date)
 
         # Get timeline from graph
-        timeline = await graph_client.get_entity_timeline(
+        timeline = await get_graph_client().get_entity_timeline(
             entity_name=input_data.entity_name,
             start_date=start_date,
             end_date=end_date
@@ -644,11 +644,11 @@ async def get_enhanced_entity_relationships(
         List of relationships with enhanced extraction
     """
     try:
-        # Import here to avoid circular imports
-        from .graph_utils import graph_client
+        # Get graph client
+        client = get_graph_client()
 
         # Initialize graph client
-        await graph_client.initialize()
+        await client.initialize()
 
         # Build comprehensive search queries that match ingestion patterns
         search_queries = [
@@ -699,7 +699,7 @@ async def get_enhanced_entity_relationships(
         for query in search_queries:
             try:
                 logger.debug(f"Searching with query: '{query}'")
-                results = await graph_client.search(query)
+                results = await client.search(query)
                 logger.debug(f"Query '{query}' returned {len(results)} results")
 
                 for result in results:

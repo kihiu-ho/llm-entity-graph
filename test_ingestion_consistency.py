@@ -168,10 +168,11 @@ async def test_agent_tools_with_real_data():
                     
                     # Try a basic search to see if there are any facts at all
                     logger.info("Checking if any facts exist for this entity...")
-                    from agent.graph_utils import graph_client
-                    await graph_client.initialize()
-                    
-                    basic_results = await graph_client.search(f"{test_case['entity_name']}")
+                    from agent.graph_utils import get_graph_client
+                    client = get_graph_client()
+                    await client.initialize()
+
+                    basic_results = await client.search(f"{test_case['entity_name']}")
                     if basic_results:
                         logger.info(f"Found {len(basic_results)} basic facts:")
                         for i, result in enumerate(basic_results[:2], 1):

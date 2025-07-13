@@ -20,7 +20,7 @@ from agent.models import IngestionConfig
 from cleanup_entity_labels import EntityLabelCleanup
 
 # Import graph utilities for validation
-from agent.graph_utils import graph_client, search_knowledge_graph
+from agent.graph_utils import get_graph_client, search_knowledge_graph
 from agent.tools import search_people_tool, search_companies_tool, PersonSearchInput, CompanySearchInput
 
 # Set up logging
@@ -277,7 +277,8 @@ async def _validate_graph_search_alignment(verbose: bool = True) -> Dict[str, An
 
     try:
         # Initialize graph client if needed
-        await graph_client.initialize()
+        client = get_graph_client()
+        await client.initialize()
 
         # Test 1: Search for people using agent's search functionality
         if verbose:
