@@ -38,10 +38,12 @@ def event_loop():
 @pytest.fixture
 def mock_database_pool():
     """Mock database pool for testing."""
-    with patch('agent.db_utils.db_pool') as mock_pool:
+    with patch('agent.db_utils.get_db_pool') as mock_get_pool:
         mock_conn = AsyncMock()
+        mock_pool = AsyncMock()
         mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get_pool.return_value = mock_pool
         yield mock_pool
 
 

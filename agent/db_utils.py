@@ -66,18 +66,28 @@ class DatabasePool:
             yield connection
 
 
-# Global database pool instance
-db_pool = DatabasePool()
+# Global database pool instance (lazy initialization)
+db_pool: Optional[DatabasePool] = None
+
+
+def get_db_pool() -> DatabasePool:
+    """Get or create the global database pool instance."""
+    global db_pool
+    if db_pool is None:
+        db_pool = DatabasePool()
+    return db_pool
 
 
 async def initialize_database():
     """Initialize database connection pool."""
-    await db_pool.initialize()
+    pool = get_db_pool()
+    await pool.initialize()
 
 
 async def close_database():
     """Close database connection pool."""
-    await db_pool.close()
+    pool = get_db_pool()
+    await pool.close()
 
 
 # Session Management Functions
@@ -97,7 +107,7 @@ async def create_session(
     Returns:
         Session ID
     """
-    async with db_pool.acquire() as conn:
+    async with get_db_pool().acquire() as conn:
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=timeout_minutes)
         
         result = await conn.fetchrow(
@@ -124,7 +134,7 @@ async def get_session(session_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         Session data or None if not found/expired
     """
-    async with db_pool.acquire() as conn:
+    async with get_db_pool().acquire() as conn:
         result = await conn.fetchrow(
             """
             SELECT 
@@ -165,7 +175,7 @@ async def update_session(session_id: str, metadata: Dict[str, Any]) -> bool:
     Returns:
         True if updated, False if not found
     """
-    async with db_pool.acquire() as conn:
+    async with get_db_pool().acquire() as conn:
         result = await conn.execute(
             """
             UPDATE sessions
@@ -199,7 +209,7 @@ async def add_message(
     Returns:
         Message ID
     """
-    async with db_pool.acquire() as conn:
+    async with get_db_pool().acquire() as conn:
         result = await conn.fetchrow(
             """
             INSERT INTO messages (session_id, role, content, metadata)
@@ -229,7 +239,7 @@ async def get_session_messages(
     Returns:
         List of messages ordered by creation time
     """
-    async with db_pool.acquire() as conn:
+    async with get_db_pool().acquire() as conn:
         query = """
             SELECT 
                 id::text,
@@ -270,7 +280,7 @@ async def get_document(document_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         Document data or None if not found
     """
-    async with db_pool.acquire() as conn:
+    async with get_db_pool().acquire() as conn:
         result = await conn.fetchrow(
             """
             SELECT 
@@ -317,7 +327,7 @@ async def list_documents(
     Returns:
         List of documents
     """
-    async with db_pool.acquire() as conn:
+    async with get_db_pool().acquire() as conn:
         query = """
             SELECT 
                 d.id::text,
@@ -380,7 +390,7 @@ async def vector_search(
     Returns:
         List of matching chunks ordered by similarity (best first)
     """
-    async with db_pool.acquire() as conn:
+    async with get_db_pool().acquire() as conn:
         # Convert embedding to PostgreSQL vector string format
         # PostgreSQL vector format: '[1.0,2.0,3.0]' (no spaces after commas)
         embedding_str = '[' + ','.join(map(str, embedding)) + ']'
@@ -423,7 +433,7 @@ async def hybrid_search(
     Returns:
         List of matching chunks ordered by combined score (best first)
     """
-    async with db_pool.acquire() as conn:
+    async with get_db_pool().acquire() as conn:
         # Convert embedding to PostgreSQL vector string format
         # PostgreSQL vector format: '[1.0,2.0,3.0]' (no spaces after commas)
         embedding_str = '[' + ','.join(map(str, embedding)) + ']'
@@ -474,7 +484,7 @@ async def enhanced_hybrid_search(
     Returns:
         List of matching chunks with enhanced scoring
     """
-    async with db_pool.acquire() as conn:
+    async with get_db_pool().acquire() as conn:
         # Convert embedding to PostgreSQL vector string format
         embedding_str = '[' + ','.join(map(str, embedding)) + ']'
 
@@ -523,7 +533,7 @@ async def get_document_chunks(document_id: str) -> List[Dict[str, Any]]:
     Returns:
         List of chunks ordered by chunk index
     """
-    async with db_pool.acquire() as conn:
+    async with get_db_pool().acquire() as conn:
         results = await conn.fetch(
             "SELECT * FROM get_document_chunks($1::uuid)",
             document_id
@@ -552,7 +562,7 @@ async def execute_query(query: str, *params) -> List[Dict[str, Any]]:
     Returns:
         Query results
     """
-    async with db_pool.acquire() as conn:
+    async with get_db_pool().acquire() as conn:
         results = await conn.fetch(query, *params)
         return [dict(row) for row in results]
 
@@ -565,7 +575,7 @@ async def test_connection() -> bool:
         True if connection successful
     """
     try:
-        async with db_pool.acquire() as conn:
+        async with get_db_pool().acquire() as conn:
             await conn.fetchval("SELECT 1")
         return True
     except Exception as e:

@@ -21,7 +21,7 @@ from .graph_builder import create_graph_builder
 
 # Import agent utilities
 try:
-    from ..agent.db_utils import initialize_database, close_database, db_pool
+    from ..agent.db_utils import initialize_database, close_database, get_db_pool
     from ..agent.graph_utils import initialize_graph, close_graph
     from ..agent.models import IngestionConfig, IngestionResult
 except ImportError:
@@ -29,7 +29,7 @@ except ImportError:
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from agent.db_utils import initialize_database, close_database, db_pool
+    from agent.db_utils import initialize_database, close_database, get_db_pool
     from agent.graph_utils import initialize_graph, close_graph
     from agent.models import IngestionConfig, IngestionResult
 
@@ -386,7 +386,7 @@ class DocumentIngestionPipeline:
         metadata: Dict[str, Any]
     ) -> str:
         """Save document and chunks to PostgreSQL."""
-        async with db_pool.acquire() as conn:
+        async with get_db_pool().acquire() as conn:
             async with conn.transaction():
                 # Insert document
                 document_result = await conn.fetchrow(
