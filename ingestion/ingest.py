@@ -232,9 +232,15 @@ class DocumentIngestionPipeline:
                 sample_entities = chunks[0].metadata.get("entities", {})
                 entities_extracted = 0
 
+                # Debug: Log extracted entities
+                logger.info(f"Sample entities structure: {list(sample_entities.keys())}")
+
                 # Count simple list entities
                 for category in ["companies", "technologies", "people", "locations", "network_entities"]:
-                    entities_extracted += len(sample_entities.get(category, []))
+                    category_entities = sample_entities.get(category, [])
+                    entities_extracted += len(category_entities)
+                    if category_entities:
+                        logger.info(f"Found {len(category_entities)} {category}: {category_entities[:5]}...")  # Show first 5
 
                 # Count nested dict entities
                 for category in ["financial_entities", "corporate_roles", "ownership", "transactions", "personal_connections"]:
@@ -243,6 +249,8 @@ class DocumentIngestionPipeline:
                         for subcategory, items in nested_entities.items():
                             if isinstance(items, list):
                                 entities_extracted += len(items)
+                                if items:
+                                    logger.info(f"Found {len(items)} {category}.{subcategory}: {items[:3]}...")  # Show first 3
 
             logger.info(f"Extracted {entities_extracted} entities using document-level extraction")
         
