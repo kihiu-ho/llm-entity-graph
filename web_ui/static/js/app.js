@@ -107,6 +107,18 @@ class AgenticRAGUI {
         this.startIngestionBtn.addEventListener('click', () => this.startIngestion());
         this.cancelIngestionBtn.addEventListener('click', () => this.cancelIngestion());
 
+        // Clear files button
+        document.addEventListener('click', (e) => {
+            if (e.target.id === 'clear-files' || e.target.closest('#clear-files')) {
+                this.clearSelectedFiles();
+            }
+        });
+
+        // Ingestion mode change events
+        document.querySelectorAll('input[name="ingestion-mode"]').forEach(radio => {
+            radio.addEventListener('change', () => this.handleModeChange());
+        });
+
         // Upload area drag and drop
         this.setupDragAndDrop();
 
@@ -629,6 +641,7 @@ class AgenticRAGUI {
     openIngestionModal() {
         this.ingestionModal.style.display = 'block';
         this.resetIngestionForm();
+        this.handleModeChange(); // Initialize mode-specific UI
     }
 
     resetIngestionForm() {
@@ -636,8 +649,36 @@ class AgenticRAGUI {
         this.updateFileList();
         this.hideIngestionProgress();
         this.hideIngestionResults();
-        this.startIngestionBtn.disabled = true;
+        this.updateStartButtonState();
         this.isIngesting = false;
+    }
+
+    handleModeChange() {
+        const selectedMode = document.querySelector('input[name="ingestion-mode"]:checked').value;
+
+        // Update button text based on mode
+        const modeTexts = {
+            'basic': 'Start Basic Ingestion',
+            'clean': 'Clean & Re-ingest All',
+            'fast': 'Start Fast Processing'
+        };
+
+        this.startIngestionBtn.innerHTML = `<i class="fas fa-play"></i> ${modeTexts[selectedMode]}`;
+
+        // Update button state
+        this.updateStartButtonState();
+    }
+
+    updateStartButtonState() {
+        // Always require files to be selected
+        this.startIngestionBtn.disabled = this.selectedFiles.length === 0;
+    }
+
+    clearSelectedFiles() {
+        this.selectedFiles = [];
+        this.updateFileList();
+        this.updateStartButtonState();
+        this.showToast('info', 'All files cleared');
     }
 
     setupDragAndDrop() {
@@ -686,7 +727,7 @@ class AgenticRAGUI {
         });
 
         this.updateFileList();
-        this.startIngestionBtn.disabled = this.selectedFiles.length === 0;
+        this.updateStartButtonState();
     }
 
     updateFileList() {
@@ -712,7 +753,7 @@ class AgenticRAGUI {
                 const index = parseInt(e.target.dataset.index);
                 this.selectedFiles.splice(index, 1);
                 this.updateFileList();
-                this.startIngestionBtn.disabled = this.selectedFiles.length === 0;
+                this.updateStartButtonState();
             });
         });
     }
@@ -726,6 +767,9 @@ class AgenticRAGUI {
     }
 
     async startIngestion() {
+        const selectedMode = document.querySelector('input[name="ingestion-mode"]:checked').value;
+
+        // Validate files are selected
         if (this.selectedFiles.length === 0) {
             this.showToast('warning', 'Please select files to ingest');
             return;
@@ -739,20 +783,14 @@ class AgenticRAGUI {
         this.updateProgress(0, 'Preparing ingestion...');
 
         try {
-            // Create FormData with files
+            // Create FormData with uploaded files
             const formData = new FormData();
             this.selectedFiles.forEach(file => {
                 formData.append('files', file);
             });
 
-            // Add ingestion configuration
-            const config = {
-                chunk_size: parseInt(document.getElementById('chunk-size').value) || 8000,
-                chunk_overlap: parseInt(document.getElementById('chunk-overlap').value) || 800,
-                extract_entities: document.getElementById('extract-entities').checked,
-                clean_before_ingest: document.getElementById('clean-before-ingest').checked
-            };
-
+            // Enhanced ingestion configuration based on mode
+            const config = this.getIngestionConfig(selectedMode);
             formData.append('config', JSON.stringify(config));
 
             // Start ingestion
@@ -862,6 +900,48 @@ class AgenticRAGUI {
 
     hideIngestionResults() {
         document.getElementById('ingestion-results').style.display = 'none';
+    }
+
+    getIngestionConfig(mode) {
+        // Base configuration from settings (if available)
+        const baseConfig = {
+            chunk_size: parseInt(document.getElementById('chunk-size')?.value) || 8000,
+            chunk_overlap: parseInt(document.getElementById('chunk-overlap')?.value) || 800,
+            extract_entities: document.getElementById('extract-entities')?.checked !== false,
+            clean_before_ingest: document.getElementById('clean-before-ingest')?.checked || false,
+            use_semantic: true,
+            verbose: false,
+            mode: mode
+        };
+
+        // Mode-specific overrides
+        switch (mode) {
+            case 'basic':
+                return {
+                    ...baseConfig,
+                    mode: 'basic'
+                };
+
+            case 'clean':
+                return {
+                    ...baseConfig,
+                    clean_before_ingest: true,
+                    mode: 'clean'
+                };
+
+            case 'fast':
+                return {
+                    ...baseConfig,
+                    chunk_size: 800,
+                    use_semantic: false,
+                    extract_entities: false,
+                    verbose: true,
+                    mode: 'fast'
+                };
+
+            default:
+                return baseConfig;
+        }
     }
 
     cancelIngestion() {

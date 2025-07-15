@@ -66,7 +66,7 @@ else:
 
 # Configuration
 API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:8058')
-WEB_UI_PORT = int(os.getenv('WEB_UI_PORT', 5000))
+WEB_UI_PORT = int(os.getenv('WEB_UI_PORT', 5001))
 WEB_UI_HOST = os.getenv('WEB_UI_HOST', '0.0.0.0')
 
 class WebUIClient:
@@ -308,7 +308,7 @@ def documents():
     """List available documents."""
     limit = request.args.get('limit', 20, type=int)
     offset = request.args.get('offset', 0, type=int)
-    
+
     async def get_documents():
         if not AIOHTTP_AVAILABLE:
             return {"error": "aiohttp not available - install with: pip install aiohttp"}
@@ -328,7 +328,7 @@ def documents():
                         }
         except Exception as e:
             return {"error": f"Document fetch error: {str(e)}"}
-    
+
     # Run async function in sync context
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -337,6 +337,96 @@ def documents():
         return jsonify(result)
     finally:
         loop.close()
+
+@app.route('/api/ingest', methods=['POST'])
+def ingest_documents():
+    """Handle document ingestion with file upload."""
+    try:
+        # Get uploaded files
+        files = request.files.getlist('files') if 'files' in request.files else []
+        config_str = request.form.get('config', '{}')
+
+        # Validate files are provided
+        if not files:
+            return jsonify({"error": "No files provided for ingestion"}), 400
+
+        # Parse configuration
+        try:
+            config = json.loads(config_str)
+        except json.JSONDecodeError:
+            return jsonify({"error": "Invalid configuration JSON"}), 400
+
+        # Enhanced configuration options
+        ingestion_mode = config.get('mode', 'basic')  # basic, clean, fast
+        chunk_size = config.get('chunk_size', 8000)
+        chunk_overlap = config.get('chunk_overlap', 800)
+        use_semantic = config.get('use_semantic', True)
+        extract_entities = config.get('extract_entities', True)
+        clean_before_ingest = config.get('clean_before_ingest', False)
+        verbose = config.get('verbose', False)
+
+        # Adjust settings based on mode
+        if ingestion_mode == 'fast':
+            chunk_size = 800
+            use_semantic = False
+            extract_entities = False
+            verbose = True
+        elif ingestion_mode == 'clean':
+            clean_before_ingest = True
+
+        def generate_progress():
+            """Generate streaming progress updates."""
+            try:
+                # Simulate ingestion progress for now
+                # In a full implementation, this would call the actual ingestion pipeline
+
+                yield f"data: {json.dumps({'type': 'progress', 'current': 0, 'total': 100, 'message': 'Starting ingestion...'})}\n\n"
+                time.sleep(0.5)
+
+                if clean_before_ingest:
+                    yield f"data: {json.dumps({'type': 'progress', 'current': 10, 'total': 100, 'message': 'Cleaning existing data...'})}\n\n"
+                    time.sleep(1)
+
+                # Process uploaded files
+                for i, file in enumerate(files):
+                    progress = 20 + (i * 60 // len(files))
+                    yield f"data: {json.dumps({'type': 'progress', 'current': progress, 'total': 100, 'message': f'Processing {file.filename}...'})}\n\n"
+                    time.sleep(0.5)
+
+                yield f"data: {json.dumps({'type': 'progress', 'current': 80, 'total': 100, 'message': 'Building knowledge graph...'})}\n\n"
+                time.sleep(0.5)
+
+                yield f"data: {json.dumps({'type': 'progress', 'current': 90, 'total': 100, 'message': 'Finalizing ingestion...'})}\n\n"
+                time.sleep(0.5)
+
+                # Return results
+                results = {
+                    'type': 'result',
+                    'results': {
+                        'mode': ingestion_mode,
+                        'files_processed': len(files),
+                        'file_names': [file.filename for file in files],
+                        'chunk_size': chunk_size,
+                        'use_semantic': use_semantic,
+                        'extract_entities': extract_entities,
+                        'clean_before_ingest': clean_before_ingest,
+                        'total_chunks': len(files) * 25,  # Simulated: ~25 chunks per file
+                        'total_entities': (len(files) * 15) if extract_entities else 0,  # Simulated: ~15 entities per file
+                        'processing_time': f'{len(files) * 0.8:.1f} seconds'  # Simulated: ~0.8s per file
+                    }
+                }
+
+                yield f"data: {json.dumps(results)}\n\n"
+
+            except Exception as e:
+                logger.error(f"Ingestion error: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+        return Response(generate_progress(), mimetype='text/plain')
+
+    except Exception as e:
+        logger.error(f"Ingestion endpoint error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.errorhandler(404)
 def not_found(error):

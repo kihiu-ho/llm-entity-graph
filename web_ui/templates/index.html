@@ -209,20 +209,62 @@
                     </button>
                 </div>
                 <div class="modal-body">
+                    <!-- Ingestion Mode Selection -->
                     <div class="ingestion-section">
-                        <h4>Upload Documents</h4>
+                        <h4><i class="fas fa-cogs"></i> Ingestion Mode</h4>
+                        <div class="mode-selection">
+                            <div class="mode-option">
+                                <input type="radio" id="mode-basic" name="ingestion-mode" value="basic" checked>
+                                <label for="mode-basic">
+                                    <strong>Basic Ingestion</strong>
+                                    <span class="mode-description">Standard processing with semantic chunking</span>
+                                    <code>python -m ingestion.ingest</code>
+                                </label>
+                            </div>
+                            <div class="mode-option">
+                                <input type="radio" id="mode-clean" name="ingestion-mode" value="clean">
+                                <label for="mode-clean">
+                                    <strong>Clean & Re-ingest</strong>
+                                    <span class="mode-description">Remove existing data and process uploaded files fresh</span>
+                                    <code>python -m ingestion.ingest --clean</code>
+                                </label>
+                            </div>
+                            <div class="mode-option">
+                                <input type="radio" id="mode-fast" name="ingestion-mode" value="fast">
+                                <label for="mode-fast">
+                                    <strong>Fast Processing</strong>
+                                    <span class="mode-description">Faster processing with smaller chunks, no knowledge graph</span>
+                                    <code>python -m ingestion.ingest --chunk-size 800 --no-semantic --verbose</code>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- File Upload Section -->
+                    <div class="ingestion-section" id="upload-section">
+                        <h4><i class="fas fa-upload"></i> Upload Documents</h4>
+                        <div class="upload-info">
+                            <p><i class="fas fa-info-circle"></i> Upload Markdown (.md) or Text (.txt) files for processing</p>
+                        </div>
                         <div class="upload-area" id="upload-area">
                             <div class="upload-content">
                                 <i class="fas fa-cloud-upload-alt"></i>
-                                <p>Drag and drop Markdown files here or click to browse</p>
-                                <input type="file" id="file-input" multiple accept=".md,.txt" style="display: none;">
-                                <button id="browse-files" class="secondary-btn">Browse Files</button>
+                                <p>Drag and drop files here or click to browse</p>
+                                <input type="file" id="file-input" multiple accept=".md,.txt,.markdown" style="display: none;">
+                                <button id="browse-files" class="secondary-btn">
+                                    <i class="fas fa-folder-open"></i> Browse Files
+                                </button>
                             </div>
                         </div>
 
                         <div id="file-list" class="file-list" style="display: none;">
-                            <h5>Selected Files:</h5>
+                            <h5><i class="fas fa-list"></i> Selected Files:</h5>
                             <ul id="selected-files"></ul>
+                            <div class="file-actions">
+                                <button id="clear-files" class="secondary-btn">
+                                    <i class="fas fa-trash"></i> Clear All
+                                </button>
+                            </div>
                         </div>
                     </div>
 
