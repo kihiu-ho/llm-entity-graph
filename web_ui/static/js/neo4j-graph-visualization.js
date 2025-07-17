@@ -34,13 +34,13 @@ class Neo4jGraphVisualization {
         // Node styling configuration
         this.nodeStyles = {
             'Person': {
-                color: '#4CAF50',
-                size: 20,
+                color: '#4CAF50',  // Green for people
+                size: 25,
                 icon: '👤'
             },
             'Company': {
-                color: '#2196F3',
-                size: 25,
+                color: '#2196F3',  // Blue for companies
+                size: 30,
                 icon: '🏢'
             },
             'Organization': {
@@ -234,7 +234,13 @@ class Neo4jGraphVisualization {
                 allowDynamicMinZoom: true,
                 maxZoom: 10,
                 minZoom: 0.1,
-                disableTelemetry: true
+                disableTelemetry: true,
+                styling: {
+                    nodeDefaultBorderColor: '#333',
+                    selectedBorderColor: '#007bff',
+                    relationshipDefaultColor: '#666',
+                    selectedRelationshipColor: '#007bff'
+                }
             };
             const callbacks = {
                 onLayoutDone: () => {
@@ -836,6 +842,24 @@ class Neo4jGraphVisualization {
                             }
                         });
 
+                        // Log sample data to verify captions
+                        if (processedData.nodes.length > 0) {
+                            console.log('📋 Sample node with caption:', {
+                                id: processedData.nodes[0].id,
+                                caption: processedData.nodes[0].caption,
+                                color: processedData.nodes[0].color,
+                                size: processedData.nodes[0].size
+                            });
+                        }
+                        if (processedData.relationships.length > 0) {
+                            console.log('📋 Sample relationship with caption:', {
+                                id: processedData.relationships[0].id,
+                                caption: processedData.relationships[0].caption,
+                                color: processedData.relationships[0].color,
+                                width: processedData.relationships[0].width
+                            });
+                        }
+
                         this.nvl.addAndUpdateElementsInGraph(processedData.nodes, processedData.relationships);
                         console.log('✅ nvl.addAndUpdateElementsInGraph called successfully');
                         renderSuccess = true;
@@ -919,15 +943,10 @@ class Neo4jGraphVisualization {
                     name: entityName,
                     ...node.properties
                 },
-                // NVL-specific styling
+                // NVL-specific styling (based on reference example)
                 color: style.color,
                 size: style.size,
-                captions: [{
-                    value: entityName,
-                    styles: ['bold']
-                }],
-                captionAlign: 'bottom',
-                captionSize: 12,
+                caption: entityName, // Simple caption property for entity name
                 style: {
                     color: style.color,
                     size: style.size,
@@ -937,6 +956,9 @@ class Neo4jGraphVisualization {
 
             if (index < 3) {
                 console.log(`📋 Processed node ${index}:`, processedNode);
+                console.log(`📋 Node caption:`, processedNode.caption);
+                console.log(`📋 Node color:`, processedNode.color);
+                console.log(`📋 Node size:`, processedNode.size);
             }
 
             return processedNode;
@@ -956,6 +978,10 @@ class Neo4jGraphVisualization {
                 from: rel.startNodeId || rel.source,
                 to: rel.endNodeId || rel.target,
                 properties: rel.properties || {},
+                // NVL-specific styling (based on reference example)
+                color: style.color,
+                width: style.width,
+                caption: relType.replace(/_/g, ' '), // Simple caption property for relationship label
                 style: {
                     color: style.color,
                     width: style.width
@@ -964,6 +990,9 @@ class Neo4jGraphVisualization {
 
             if (index < 3) {
                 console.log(`📋 Processed relationship ${index}:`, processedRel);
+                console.log(`📋 Relationship caption:`, processedRel.caption);
+                console.log(`📋 Relationship color:`, processedRel.color);
+                console.log(`📋 Relationship width:`, processedRel.width);
             }
 
             return processedRel;
