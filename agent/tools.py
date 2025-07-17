@@ -580,7 +580,7 @@ async def search_companies_tool(input_data: CompanySearchInput) -> List[Dict[str
         return []
 
 
-async def get_entity_relationships_tool(input_data: EntityRelationshipSearchInput) -> List[Dict[str, Any]]:
+async def get_structured_entity_relationships_tool(input_data: EntityRelationshipSearchInput) -> List[Dict[str, Any]]:
     """
     Get relationships for a node (person or company).
     This function is designed to work with the exact format used during ingestion.

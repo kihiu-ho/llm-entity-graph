@@ -51,7 +51,8 @@ class GraphitiClient:
         self.neo4j_uri = neo4j_uri or os.getenv("NEO4J_URI", "bolt://localhost:7687")
         self.neo4j_user = neo4j_user or os.getenv("NEO4J_USER", "neo4j")
         self.neo4j_password = neo4j_password or os.getenv("NEO4J_PASSWORD")
-        
+        self.neo4j_database = os.getenv("NEO4J_DATABASE", "neo4j")  # Default database name
+
         if not self.neo4j_password:
             raise ValueError("NEO4J_PASSWORD environment variable not set")
         
@@ -1105,6 +1106,83 @@ def get_graph_client() -> GraphitiClient:
     if graph_client is None:
         graph_client = GraphitiClient()
     return graph_client
+
+
+async def get_neo4j_driver():
+    """
+    Get the Neo4j driver from the Graphiti client.
+
+    Returns:
+        Neo4j driver instance
+    """
+    client = get_graph_client()
+    if not client._initialized:
+        await client.initialize()
+    return client.graphiti.driver
+
+
+def get_neo4j_database():
+    """
+    Get the Neo4j database name.
+
+    Returns:
+        Neo4j database name
+    """
+    client = get_graph_client()
+    return client.neo4j_database
+
+
+async def get_neo4j_session():
+    """
+    Get a Neo4j session with the correct database.
+
+    Returns:
+        Neo4j session instance
+    """
+    driver = await get_neo4j_driver()
+    database = get_neo4j_database()
+    return driver.session(database=database)
+
+
+def get_neo4j_driver_sync():
+    """
+    Get a synchronous Neo4j driver (for use in non-async contexts).
+
+    Returns:
+        Synchronous Neo4j driver instance
+    """
+    from neo4j import GraphDatabase
+
+    # Get Neo4j configuration
+    client = get_graph_client()
+
+    # Create a new synchronous driver directly
+    return GraphDatabase.driver(
+        client.neo4j_uri,
+        auth=(client.neo4j_user, client.neo4j_password)
+    )
+
+
+def get_neo4j_session_sync():
+    """
+    Get a Neo4j session synchronously with the correct database.
+
+    Returns:
+        Synchronous Neo4j session instance
+    """
+    from neo4j import GraphDatabase
+
+    # Get Neo4j configuration
+    client = get_graph_client()
+
+    # Create a new synchronous driver directly
+    sync_driver = GraphDatabase.driver(
+        client.neo4j_uri,
+        auth=(client.neo4j_user, client.neo4j_password)
+    )
+
+    # Create a synchronous session
+    return sync_driver.session(database=client.neo4j_database)
 
 
 async def initialize_graph():

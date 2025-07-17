@@ -24,10 +24,25 @@
         <main class="main-content">
             <!-- Sidebar -->
             <aside class="sidebar">
+
+
                 <div class="sidebar-section">
-                    <h3><i class="fas fa-file-alt"></i> Documents</h3>
-                    <div id="documents-list" class="documents-list">
-                        <div class="loading">Loading documents...</div>
+                    <h3><i class="fas fa-project-diagram"></i> Knowledge Graph</h3>
+                    <div class="graph-controls">
+                        <div class="form-group">
+                            <label for="graph-limit">Limit:</label>
+                            <input type="number" id="graph-limit" value="50" min="10" max="200" class="limit-input">
+                        </div>
+                        <div class="form-group">
+                            <label for="graph-entity">Entity:</label>
+                            <input type="text" id="graph-entity" placeholder="Enter entity name..." class="entity-input">
+                        </div>
+                        <button id="visualize-graph" class="action-btn">
+                            <i class="fas fa-eye"></i> Visualize Graph
+                        </button>
+                        <button id="refresh-graph" class="action-btn">
+                            <i class="fas fa-sync"></i> Refresh
+                        </button>
                     </div>
                 </div>
 
@@ -38,7 +53,7 @@
                             <i class="fas fa-cog"></i> Settings
                         </button>
                         <button id="ingestion-btn" class="action-btn">
-                            <i class="fas fa-upload"></i> Ingest Documents
+                            <i class="fas fa-upload"></i> Data Ingestion
                         </button>
                         <button id="clear-chat" class="action-btn">
                             <i class="fas fa-trash"></i> Clear Chat
@@ -242,7 +257,7 @@
 
                     <!-- File Upload Section -->
                     <div class="ingestion-section" id="upload-section">
-                        <h4><i class="fas fa-upload"></i> Upload Documents</h4>
+                        <h4><i class="fas fa-upload"></i> Upload Files</h4>
                         <div class="upload-info">
                             <p><i class="fas fa-info-circle"></i> Upload Markdown (.md) or Text (.txt) files for processing</p>
                         </div>
@@ -295,6 +310,58 @@
             </div>
         </div>
 
+        <!-- Graph Visualization Modal -->
+        <div id="graph-modal" class="modal" style="display: none;">
+            <div class="modal-content graph-modal-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-project-diagram"></i> Knowledge Graph Visualization</h3>
+                    <span id="close-graph-modal" class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="graph-info">
+                        <div class="graph-stats">
+                            <span id="graph-nodes-count">Nodes: 0</span>
+                            <span id="graph-edges-count">Edges: 0</span>
+                            <span id="graph-limit-display">Limit: 50</span>
+                        </div>
+                        <div class="graph-controls-modal">
+                            <button id="zoom-in" class="graph-btn">
+                                <i class="fas fa-search-plus"></i>
+                            </button>
+                            <button id="zoom-out" class="graph-btn">
+                                <i class="fas fa-search-minus"></i>
+                            </button>
+                            <button id="reset-zoom" class="graph-btn">
+                                <i class="fas fa-expand-arrows-alt"></i>
+                            </button>
+                            <button id="center-graph" class="graph-btn">
+                                <i class="fas fa-crosshairs"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="graph-container" class="graph-container">
+                        <div id="graph-loading" class="graph-loading" style="display: none;">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>Loading graph data...</p>
+                        </div>
+                        <div id="graph-error" class="graph-error" style="display: none;">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <p>Failed to load graph data</p>
+                        </div>
+                        <div id="graph-canvas"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="export-graph" class="secondary-btn">
+                        <i class="fas fa-download"></i> Export Graph
+                    </button>
+                    <button id="close-graph" class="primary-btn">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Tools Used Display -->
         <div id="tools-display" class="tools-display" style="display: none;">
             <div class="tools-header">
@@ -312,6 +379,17 @@
     <!-- Toast Notifications -->
     <div id="toast-container" class="toast-container"></div>
 
+    <!-- Neo4j Visualization Library (NVL) - Bundled Version -->
+    <script src="{{ url_for('static', filename='js/dist/nvl.bundle.js') }}"
+            onload="console.log('✅ Neo4j NVL bundle loaded successfully')"
+            onerror="console.error('❌ Failed to load Neo4j NVL bundle')"></script>
+
+    <!-- D3.js for fallback graph visualization -->
+    <script src="https://d3js.org/d3.v7.min.js"
+            onload="console.log('✅ D3.js loaded successfully')"
+            onerror="console.warn('⚠️ Failed to load D3.js')"></script>
+
+    <script src="{{ url_for('static', filename='js/neo4j-graph-visualization.js') }}"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

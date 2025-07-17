@@ -1,0 +1,22 @@
+{
+  "name": "neo4j-graph-webui",
+  "version": "1.0.0",
+  "description": "Neo4j Graph Visualization Web UI",
+  "main": "src/nvl-bundle.js",
+  "scripts": {
+    "build": "webpack --mode production",
+    "dev": "webpack --mode development --watch",
+    "install-nvl": "npm install && npm run build",
+    "clean": "rm -rf static/js/dist node_modules package-lock.json"
+  },
+  "dependencies": {
+    "@neo4j-nvl/base": "^0.3.8"
+  },
+  "devDependencies": {
+    "webpack": "^5.88.0",
+    "webpack-cli": "^5.1.0"
+  },
+  "keywords": ["neo4j", "graph", "visualization"],
+  "author": "",
+  "license": "MIT"
+}

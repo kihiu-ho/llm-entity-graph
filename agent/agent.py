@@ -24,7 +24,7 @@ from .tools import (
     get_entity_timeline_tool,
     search_people_tool,
     search_companies_tool,
-    get_entity_relationships_tool as get_structured_entity_relationships_tool,
+    get_structured_entity_relationships_tool,
     VectorSearchInput,
     GraphSearchInput,
     HybridSearchInput,
@@ -365,10 +365,44 @@ async def comprehensive_search(
             search_results["search_methods_used"].append("enhanced_hybrid")
 
         if search_type in ["graph", "auto"] and include_graph_facts:
-            # Graph search for relationships and facts
+            # Check if this is a relationship query between specific entities
+            relationship_entities = _extract_entities_from_relationship_query(query)
+            logger.info(f"Extracted entities from relationship query '{query}': {relationship_entities}")
+
+            if relationship_entities:
+                logger.info(f"Using entity relationship tool for entities: {relationship_entities}")
+                # Use entity relationship tool for specific entity relationships
+                for entity in relationship_entities:
+                    try:
+                        logger.info(f"Searching for relationships for entity: {entity}")
+                        entity_rel_input = EntityRelationshipSearchInput(entity_name=entity)
+                        entity_relationships = await get_entity_relationships_tool(entity_rel_input)
+                        logger.info(f"Found {len(entity_relationships)} relationships for {entity}")
+
+                        # Add to graph results
+                        for rel in entity_relationships:
+                            search_results["graph_results"].append({
+                                "fact": f"{rel.get('source', entity)} {rel.get('relationship', 'connected to')} {rel.get('target', 'unknown')}",
+                                "uuid": rel.get('id', ''),
+                                "valid_at": rel.get('created_at', ''),
+                                "invalid_at": None,
+                                "search_method": "entity_relationships",
+                                "entity": entity,
+                                "relationship_data": rel
+                            })
+
+                        search_results["search_methods_used"].append(f"entity_relationships_{entity}")
+                    except Exception as e:
+                        logger.warning(f"Failed to get relationships for {entity}: {e}")
+            else:
+                logger.info("No specific entities extracted, using general graph search")
+
+            # Also do general graph search for additional context
+            logger.info("Performing general graph search")
             graph_input = GraphSearchInput(query=query)
             graph_results = await graph_search_tool(graph_input)
-            search_results["graph_results"] = [
+            logger.info(f"General graph search returned {len(graph_results)} results")
+            search_results["graph_results"].extend([
                 {
                     "fact": r.fact,
                     "uuid": r.uuid,
@@ -377,7 +411,7 @@ async def comprehensive_search(
                     "search_method": "knowledge_graph"
                 }
                 for r in graph_results
-            ]
+            ])
             search_results["search_methods_used"].append("knowledge_graph")
 
         if search_type in ["entities", "auto"] and include_entity_search:
@@ -449,6 +483,48 @@ def _contains_company_indicators(query: str) -> bool:
     company_indicators = ["company", "companies", "corporation", "firm", "business",
                          "organization", "enterprise", "startup", "inc", "ltd", "corp"]
     return any(indicator in query.lower() for indicator in company_indicators)
+
+
+def _extract_entities_from_relationship_query(query: str) -> List[str]:
+    """Extract entity names from relationship queries."""
+    import re
+
+    entities = []
+    query_lower = query.lower()
+
+    # Common entity patterns in relationship queries
+    entity_patterns = [
+        r'between\s+([^and]+)\s+and\s+([^.?!]+)',  # "between X and Y"
+        r'relation.*between\s+([^and]+)\s+and\s+([^.?!]+)',  # "relation between X and Y"
+        r'connection.*between\s+([^and]+)\s+and\s+([^.?!]+)',  # "connection between X and Y"
+        r'([^,\s]+)\s+and\s+([^,\s]+)\s+relationship',  # "X and Y relationship"
+    ]
+
+    for pattern in entity_patterns:
+        matches = re.findall(pattern, query_lower, re.IGNORECASE)
+        for match in matches:
+            if isinstance(match, tuple):
+                for entity in match:
+                    entity = entity.strip()
+                    # Clean up common words and parentheses
+                    entity = re.sub(r'\([^)]*\)', '', entity).strip()
+                    entity = re.sub(r'\b(the|a|an)\b', '', entity, flags=re.IGNORECASE).strip()
+                    if entity and len(entity) > 2:
+                        entities.append(entity)
+
+    # Also look for known entity names
+    known_entities = [
+        'ifha', 'international federation of horseracing authorities',
+        'hkjc', 'hong kong jockey club', 'henri pouret', 'winfried engelbrecht bresges',
+        'france galop', 'british horseracing authority', 'masayuki goto'
+    ]
+
+    for entity in known_entities:
+        if entity in query_lower:
+            entities.append(entity)
+
+    # Remove duplicates and return
+    return list(set(entities))
 
 
 def _calculate_overall_relevance_score(search_results: Dict[str, Any]) -> float:
@@ -749,6 +825,73 @@ async def get_structured_entity_relationships(
         formatted_results.append(formatted_result)
 
     return formatted_results
+
+
+@rag_agent.tool
+async def find_entity_connections(
+    ctx: RunContext[AgentDependencies],
+    query: str,
+    depth: int = 3
+) -> List[Dict[str, Any]]:
+    """
+    Find connections and relationships between entities mentioned in a query.
+
+    This tool is specifically designed for relationship queries such as:
+    - "relation between IFHA and HKJC"
+    - "how is Henri Pouret connected to IFHA"
+    - "connection between X and Y"
+
+    Use this tool when users ask about relationships, connections, or associations
+    between specific entities or organizations. This tool should be PRIORITIZED
+    for any query containing words like "relation", "connection", "between".
+
+    Args:
+        query: The relationship query (e.g., "relation between IFHA and HKJC")
+        depth: Depth of relationship traversal (default: 3)
+
+    Returns:
+        List of relationship connections found between the entities
+    """
+    logger.info(f"🔍 Finding entity connections for query: {query}")
+
+    # Extract entities from the query
+    entities = _extract_entities_from_relationship_query(query)
+    logger.info(f"📋 Extracted entities: {entities}")
+
+    if not entities:
+        logger.warning("⚠️ No entities found in relationship query")
+        return []
+
+    all_relationships = []
+
+    # Get relationships for each entity
+    for entity in entities:
+        try:
+            logger.info(f"🔎 Getting relationships for entity: {entity}")
+            input_data = EntityRelationshipSearchInput(entity_name=entity, limit=50)
+            entity_relationships = await get_entity_relationships_tool(input_data)
+            logger.info(f"📊 Found {len(entity_relationships)} relationships for {entity}")
+
+            # Add all relationships for this entity
+            for rel in entity_relationships:
+                formatted_rel = {
+                    "source_entity": rel.get("source_entity", rel.get("source", "")),
+                    "target_entity": rel.get("target_entity", rel.get("target", "")),
+                    "relationship_type": rel.get("relationship_type", rel.get("relationship", "")),
+                    "relationship_description": rel.get("description", ""),
+                    "query_entity": entity,
+                    "confidence_score": rel.get("confidence", 0.0),
+                    "source_document": rel.get("source_document", ""),
+                    "fact": rel.get("fact", "")
+                }
+                all_relationships.append(formatted_rel)
+                logger.info(f"✅ Found relationship: {formatted_rel['source_entity']} -> {formatted_rel['relationship_type']} -> {formatted_rel['target_entity']}")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to get relationships for {entity}: {e}")
+
+    logger.info(f"🎯 Found {len(all_relationships)} total relationships")
+    return all_relationships
 
 
 # Helper functions for relationship search

@@ -12,7 +12,6 @@ class AgenticRAGUI {
         this.initializeElements();
         this.bindEvents();
         this.checkHealth();
-        this.loadDocuments();
     }
     
     initializeElements() {
@@ -57,10 +56,7 @@ class AgenticRAGUI {
         // File management
         this.selectedFiles = [];
         this.isIngesting = false;
-        
-        // Documents
-        this.documentsList = document.getElementById('documents-list');
-        
+
         // Toast container
         this.toastContainer = document.getElementById('toast-container');
     }
@@ -113,6 +109,9 @@ class AgenticRAGUI {
                 this.clearSelectedFiles();
             }
         });
+
+        // Graph visualization integration
+        this.initializeGraphVisualization();
 
         // Ingestion mode change events
         document.querySelectorAll('input[name="ingestion-mode"]').forEach(radio => {
@@ -179,34 +178,7 @@ class AgenticRAGUI {
         this.statusText.textContent = statusText;
     }
     
-    async loadDocuments() {
-        try {
-            const response = await fetch('/documents?limit=10');
-            const data = await response.json();
-            
-            if (data.documents) {
-                this.displayDocuments(data.documents);
-            } else {
-                this.documentsList.innerHTML = '<div class="loading">No documents found</div>';
-            }
-        } catch (error) {
-            console.error('Failed to load documents:', error);
-            this.documentsList.innerHTML = '<div class="loading">Failed to load documents</div>';
-        }
-    }
-    
-    displayDocuments(documents) {
-        if (documents.length === 0) {
-            this.documentsList.innerHTML = '<div class="loading">No documents available</div>';
-            return;
-        }
-        
-        this.documentsList.innerHTML = documents.map(doc => 
-            `<div class="document-item" title="${doc.title || doc.filename}">
-                <i class="fas fa-file-alt"></i> ${(doc.title || doc.filename || 'Untitled').substring(0, 30)}...
-            </div>`
-        ).join('');
-    }
+
     
     async sendMessage() {
         const message = this.messageInput.value.trim();
@@ -288,6 +260,9 @@ class AgenticRAGUI {
                                     if (toolsUsed.length > 0) {
                                         this.showToolsUsed(toolsUsed);
                                     }
+
+                                    // Check if this is a relationship query that should trigger graph visualization
+                                    this.checkForGraphVisualization(message, fullResponse);
                                     return;
                                     
                                 case 'error':
@@ -847,7 +822,7 @@ class AgenticRAGUI {
     handleIngestionProgress(data) {
         if (data.type === 'progress') {
             const percent = Math.round((data.current / data.total) * 100);
-            this.updateProgress(percent, `Processing ${data.current}/${data.total} documents...`);
+            this.updateProgress(percent, `Processing ${data.current}/${data.total} files...`);
         } else if (data.type === 'result') {
             this.showIngestionResults(data.results);
             this.updateProgress(100, 'Ingestion completed');
@@ -950,6 +925,135 @@ class AgenticRAGUI {
         this.showToast('warning', 'Ingestion cancelled');
         this.startIngestionBtn.disabled = false;
         this.cancelIngestionBtn.style.display = 'none';
+    }
+
+    // Graph Visualization Integration
+    initializeGraphVisualization() {
+        // Check if graph visualization is available
+        if (typeof window.neo4jGraphVisualization !== 'undefined') {
+            this.graphViz = window.neo4jGraphVisualization;
+            console.log('Graph visualization integrated successfully');
+        } else {
+            // Retry after a delay
+            setTimeout(() => {
+                if (typeof window.neo4jGraphVisualization !== 'undefined') {
+                    this.graphViz = window.neo4jGraphVisualization;
+                    console.log('Graph visualization integrated successfully (delayed)');
+                } else {
+                    console.warn('Graph visualization not available');
+                }
+            }, 2000);
+        }
+    }
+
+    // Helper method to open graph visualization with specific entity
+    openGraphForEntity(entityName) {
+        if (this.graphViz) {
+            // Set the entity in the input field
+            document.getElementById('graph-entity').value = entityName;
+
+            // Open the graph modal
+            this.graphViz.openGraphModal();
+        } else {
+            this.showToast('warning', 'Graph visualization not available');
+        }
+    }
+
+    // Check if query should trigger graph visualization
+    checkForGraphVisualization(query, response) {
+        // Keywords that indicate relationship queries
+        const relationshipKeywords = [
+            'relation', 'relationship', 'connect', 'connection', 'between',
+            'link', 'associate', 'work', 'member', 'part of', 'belong',
+            'ifha', 'hkjc', 'organization', 'company'
+        ];
+
+        // Entity keywords that suggest graph visualization would be helpful
+        const entityKeywords = [
+            'henri pouret', 'winfried engelbrecht', 'masayuki goto',
+            'international federation', 'hong kong jockey club', 'ifha', 'hkjc'
+        ];
+
+        const queryLower = query.toLowerCase();
+        const responseLower = response.toLowerCase();
+
+        // Check if query contains relationship keywords
+        const hasRelationshipKeywords = relationshipKeywords.some(keyword =>
+            queryLower.includes(keyword)
+        );
+
+        // Check if query or response contains entity keywords
+        const hasEntityKeywords = entityKeywords.some(keyword =>
+            queryLower.includes(keyword) || responseLower.includes(keyword)
+        );
+
+        // Check if response mentions entities or relationships
+        const hasEntityMentions = responseLower.includes('entity') ||
+                                 responseLower.includes('organization') ||
+                                 responseLower.includes('person') ||
+                                 responseLower.includes('company');
+
+        // Trigger graph visualization if conditions are met
+        if ((hasRelationshipKeywords && hasEntityKeywords) ||
+            (hasEntityKeywords && hasEntityMentions)) {
+
+            console.log('Detected relationship query, offering graph visualization');
+
+            // Show a toast with option to visualize
+            this.showGraphVisualizationOption(query);
+        }
+    }
+
+    // Show option to visualize graph
+    showGraphVisualizationOption(query) {
+        // Create a custom toast with graph visualization option
+        const toastContainer = document.getElementById('toast-container');
+
+        const toast = document.createElement('div');
+        toast.className = 'toast toast-info graph-toast';
+
+        toast.innerHTML = `
+            <div class="toast-content">
+                <i class="fas fa-project-diagram"></i>
+                <div class="toast-text">
+                    <strong>Visualize Relationships</strong>
+                    <p>Would you like to see a graph visualization of these relationships?</p>
+                </div>
+                <div class="toast-actions">
+                    <button class="toast-btn primary" onclick="app.visualizeQueryGraph('${query.replace(/'/g, "\\'")}')">
+                        <i class="fas fa-eye"></i> Visualize
+                    </button>
+                    <button class="toast-btn secondary" onclick="this.parentElement.parentElement.parentElement.remove()">
+                        <i class="fas fa-times"></i> Dismiss
+                    </button>
+                </div>
+            </div>
+        `;
+
+        toastContainer.appendChild(toast);
+
+        // Auto-remove after 10 seconds
+        setTimeout(() => {
+            if (toast.parentElement) {
+                toast.remove();
+            }
+        }, 10000);
+    }
+
+    // Visualize graph from query
+    visualizeQueryGraph(query) {
+        if (this.graphViz) {
+            // Remove the toast
+            const graphToasts = document.querySelectorAll('.graph-toast');
+            graphToasts.forEach(toast => toast.remove());
+
+            // Trigger graph visualization with the query
+            this.graphViz.visualizeFromQuery(query, 3);
+
+            this.showToast('info', 'Loading graph visualization...');
+        } else {
+            this.showToast('warning', 'Graph visualization not available');
+        }
     }
 }
 
