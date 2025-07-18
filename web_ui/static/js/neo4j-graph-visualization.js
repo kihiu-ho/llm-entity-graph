@@ -235,6 +235,32 @@ class Neo4jGraphVisualization {
                 maxZoom: 10,
                 minZoom: 0.1,
                 disableTelemetry: true,
+                // Enable interactions including dragging
+                interactions: {
+                    nodeClick: true,
+                    nodeDrag: true,
+                    nodeHover: true,
+                    relationshipClick: true,
+                    relationshipHover: true,
+                    canvasClick: true,
+                    canvasDrag: true,
+                    zoom: true,
+                    pan: true
+                },
+                // Layout configuration for better dragging
+                layoutConfiguration: {
+                    forceDirected: {
+                        enableDragging: true,
+                        nodeRepulsion: 1000,
+                        linkDistance: 100,
+                        linkStrength: 0.1,
+                        gravity: 0.1,
+                        theta: 0.8,
+                        alpha: 0.1,
+                        alphaDecay: 0.02,
+                        velocityDecay: 0.4
+                    }
+                },
                 styling: {
                     nodeDefaultBorderColor: '#333',
                     selectedBorderColor: '#007bff',
@@ -269,34 +295,8 @@ class Neo4jGraphVisualization {
                 methods: Object.getOwnPropertyNames(Object.getPrototypeOf(this.nvl))
             });
 
-            // Set up event listeners for interactions
-            container.addEventListener('click', (evt) => {
-                try {
-                    console.log('🖱️ Container clicked:', evt);
-                    if (this.nvl && typeof this.nvl.getHits === 'function') {
-                        const hits = this.nvl.getHits(evt);
-                        console.log('🎯 NVL hits:', hits);
-
-                        if (hits && hits.nvlTargets) {
-                            const { nvlTargets } = hits;
-                            if (nvlTargets.nodes && nvlTargets.nodes.length > 0) {
-                                console.log('🔵 Node clicked:', nvlTargets.nodes[0]);
-                                this.onNodeClick(nvlTargets.nodes[0]);
-                            } else if (nvlTargets.relationships && nvlTargets.relationships.length > 0) {
-                                console.log('🔗 Relationship clicked:', nvlTargets.relationships[0]);
-                                this.onRelationshipClick(nvlTargets.relationships[0]);
-                            } else {
-                                console.log('🖱️ Canvas clicked');
-                                this.onCanvasClick();
-                            }
-                        }
-                    } else {
-                        console.warn('⚠️ NVL getHits method not available');
-                    }
-                } catch (e) {
-                    console.warn('⚠️ Click event handling failed:', e);
-                }
-            });
+            // Set up NVL interaction modules
+            this.setupNVLInteractions();
 
             console.log('✅ NVL initialized successfully');
         } catch (error) {
@@ -305,6 +305,248 @@ class Neo4jGraphVisualization {
             console.log('🔄 Creating fallback visualization...');
             this.createFallbackVisualization();
         }
+    }
+
+    setupNVLInteractions() {
+        try {
+            console.log('🎮 Setting up NVL interaction modules...');
+
+            // Check different possible locations for interaction modules
+            console.log('🔍 Checking for interaction modules in various locations...');
+            console.log('  - window.NVL:', typeof window.NVL);
+            console.log('  - window.Neo4jNVL:', typeof window.Neo4jNVL);
+            console.log('  - window.NVLInteractions:', typeof window.NVLInteractions);
+
+            // Check if interaction modules are available in different locations
+            const interactionSources = [
+                window.NVL,
+                window.Neo4jNVL,
+                window.NVLInteractions,
+                this.nvl?.constructor // Check the NVL constructor itself
+            ];
+
+            let interactionModules = null;
+            for (const source of interactionSources) {
+                if (source && (
+                    source.ZoomInteraction ||
+                    source.PanInteraction ||
+                    source.DragNodeInteraction ||
+                    source.ClickInteraction ||
+                    source.HoverInteraction
+                )) {
+                    interactionModules = source;
+                    console.log('✅ Found interaction modules in:', source);
+                    break;
+                }
+            }
+
+            if (interactionModules) {
+                console.log('✅ NVL interaction modules found, setting up...');
+
+                // Set up zoom interaction
+                if (interactionModules.ZoomInteraction) {
+                    this.zoomInteraction = new interactionModules.ZoomInteraction(this.nvl);
+                    console.log('✅ Zoom interaction enabled');
+                }
+
+                // Set up pan interaction
+                if (interactionModules.PanInteraction) {
+                    this.panInteraction = new interactionModules.PanInteraction(this.nvl);
+                    console.log('✅ Pan interaction enabled');
+                }
+
+                // Set up drag node interaction
+                if (interactionModules.DragNodeInteraction) {
+                    this.dragInteraction = new interactionModules.DragNodeInteraction(this.nvl);
+                    console.log('✅ Drag node interaction enabled');
+                }
+
+                // Set up click interaction with selection
+                if (interactionModules.ClickInteraction) {
+                    this.clickInteraction = new interactionModules.ClickInteraction(this.nvl, {
+                        selectOnClick: true
+                    });
+                    console.log('✅ Click interaction enabled');
+                }
+
+                // Set up hover interaction with shadow
+                if (interactionModules.HoverInteraction) {
+                    this.hoverInteraction = new interactionModules.HoverInteraction(this.nvl, {
+                        drawShadowOnHover: true
+                    });
+                    console.log('✅ Hover interaction enabled');
+                }
+
+                console.log('🎮 All available NVL interactions set up successfully');
+            } else {
+                console.log('⚠️ NVL interaction modules not found, using fallback event listeners...');
+                this.setupFallbackInteractions();
+            }
+
+        } catch (error) {
+            console.error('❌ Failed to setup NVL interactions:', error);
+            console.log('🔄 Setting up fallback interactions...');
+            this.setupFallbackInteractions();
+        }
+    }
+
+    setupFallbackInteractions() {
+        console.log('🎮 Setting up fallback interaction handlers...');
+
+        const container = document.getElementById('graph-canvas');
+        if (!container) {
+            console.error('❌ Graph canvas container not found for interactions');
+            return;
+        }
+
+        // Set up comprehensive event listeners for all interactions
+        this.setupClickInteraction(container);
+        this.setupHoverInteraction(container);
+        this.setupDragInteraction(container);
+        this.setupZoomInteraction(container);
+
+        console.log('✅ Fallback interactions set up successfully');
+    }
+
+    setupClickInteraction(container) {
+        container.addEventListener('click', (evt) => {
+            try {
+                console.log('🖱️ Container clicked:', evt);
+                if (this.nvl && typeof this.nvl.getHits === 'function') {
+                    const hits = this.nvl.getHits(evt);
+                    console.log('🎯 NVL hits:', hits);
+
+                    if (hits && hits.nvlTargets) {
+                        const { nvlTargets } = hits;
+                        if (nvlTargets.nodes && nvlTargets.nodes.length > 0) {
+                            console.log('🔵 Node clicked:', nvlTargets.nodes[0]);
+                            this.onNodeClick(nvlTargets.nodes[0]);
+                        } else if (nvlTargets.relationships && nvlTargets.relationships.length > 0) {
+                            console.log('🔗 Relationship clicked:', nvlTargets.relationships[0]);
+                            this.onRelationshipClick(nvlTargets.relationships[0]);
+                        } else {
+                            console.log('🖱️ Canvas clicked');
+                            this.onCanvasClick();
+                        }
+                    }
+                } else {
+                    console.warn('⚠️ NVL getHits method not available');
+                }
+            } catch (e) {
+                console.warn('⚠️ Click event handling failed:', e);
+            }
+        });
+    }
+
+    setupHoverInteraction(container) {
+        container.addEventListener('mousemove', (evt) => {
+            try {
+                if (this.nvl && typeof this.nvl.getHits === 'function') {
+                    const hits = this.nvl.getHits(evt);
+                    if (hits && hits.nvlTargets) {
+                        const { nvlTargets } = hits;
+                        if (nvlTargets.nodes && nvlTargets.nodes.length > 0) {
+                            container.style.cursor = 'pointer';
+                            this.onNodeHover(nvlTargets.nodes[0], evt);
+                        } else if (nvlTargets.relationships && nvlTargets.relationships.length > 0) {
+                            container.style.cursor = 'pointer';
+                            this.onRelationshipHover(nvlTargets.relationships[0], evt);
+                        } else {
+                            container.style.cursor = 'default';
+                        }
+                    }
+                }
+            } catch (e) {
+                // Silently handle hover errors to avoid spam
+            }
+        });
+    }
+
+    setupDragInteraction(container) {
+        let isDragging = false;
+        let dragStartPos = null;
+        let draggedNode = null;
+
+        container.addEventListener('mousedown', (evt) => {
+            try {
+                if (this.nvl && typeof this.nvl.getHits === 'function') {
+                    const hits = this.nvl.getHits(evt);
+                    if (hits && hits.nvlTargets && hits.nvlTargets.nodes && hits.nvlTargets.nodes.length > 0) {
+                        isDragging = true;
+                        draggedNode = hits.nvlTargets.nodes[0];
+                        dragStartPos = { x: evt.clientX, y: evt.clientY };
+                        container.style.cursor = 'grabbing';
+                        evt.preventDefault();
+                        console.log('🎯 Started dragging node:', draggedNode.id);
+                    }
+                }
+            } catch (e) {
+                console.warn('⚠️ Drag start failed:', e);
+            }
+        });
+
+        container.addEventListener('mousemove', (evt) => {
+            if (isDragging && draggedNode && dragStartPos) {
+                try {
+                    const deltaX = evt.clientX - dragStartPos.x;
+                    const deltaY = evt.clientY - dragStartPos.y;
+
+                    // Update drag position
+                    dragStartPos = { x: evt.clientX, y: evt.clientY };
+
+                    // Try to update node position if NVL supports it
+                    if (this.nvl && typeof this.nvl.updateNodePosition === 'function') {
+                        this.nvl.updateNodePosition(draggedNode.id, deltaX, deltaY);
+                    }
+
+                    evt.preventDefault();
+                } catch (e) {
+                    console.warn('⚠️ Drag move failed:', e);
+                }
+            }
+        });
+
+        container.addEventListener('mouseup', (evt) => {
+            if (isDragging) {
+                console.log('🎯 Finished dragging node:', draggedNode?.id);
+                isDragging = false;
+                draggedNode = null;
+                dragStartPos = null;
+                container.style.cursor = 'default';
+            }
+        });
+
+        // Handle mouse leave to stop dragging
+        container.addEventListener('mouseleave', (evt) => {
+            if (isDragging) {
+                console.log('🎯 Drag cancelled (mouse left container)');
+                isDragging = false;
+                draggedNode = null;
+                dragStartPos = null;
+                container.style.cursor = 'default';
+            }
+        });
+    }
+
+    setupZoomInteraction(container) {
+        container.addEventListener('wheel', (evt) => {
+            try {
+                if (this.nvl && typeof this.nvl.zoom === 'function') {
+                    const zoomDelta = evt.deltaY > 0 ? 0.9 : 1.1;
+                    this.nvl.zoom(zoomDelta);
+                    evt.preventDefault();
+                    console.log('🔍 Zoom:', zoomDelta);
+                } else if (this.nvl && typeof this.nvl.setZoom === 'function') {
+                    // Alternative zoom method
+                    const currentZoom = this.nvl.getZoom ? this.nvl.getZoom() : 1;
+                    const zoomDelta = evt.deltaY > 0 ? 0.9 : 1.1;
+                    this.nvl.setZoom(currentZoom * zoomDelta);
+                    evt.preventDefault();
+                }
+            } catch (e) {
+                console.warn('⚠️ Zoom failed:', e);
+            }
+        });
     }
 
     createFallbackVisualization() {
@@ -543,7 +785,24 @@ class Neo4jGraphVisualization {
             .attr('stroke', '#999')
             .attr('stroke-width', 2);
 
-        // Add nodes
+        // Add drag behavior
+        const drag = d3.drag()
+            .on('start', (event, d) => {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            })
+            .on('drag', (event, d) => {
+                d.fx = event.x;
+                d.fy = event.y;
+            })
+            .on('end', (event, d) => {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            });
+
+        // Add nodes with drag behavior
         const node = svg.append('g')
             .selectAll('circle')
             .data(nodes)
@@ -551,7 +810,18 @@ class Neo4jGraphVisualization {
             .attr('r', 8)
             .attr('fill', '#1f77b4')
             .attr('stroke', '#fff')
-            .attr('stroke-width', 2);
+            .attr('stroke-width', 2)
+            .style('cursor', 'grab')
+            .call(drag)
+            .on('mouseover', function(event, d) {
+                d3.select(this).style('cursor', 'grab');
+            })
+            .on('mousedown', function(event, d) {
+                d3.select(this).style('cursor', 'grabbing');
+            })
+            .on('mouseup', function(event, d) {
+                d3.select(this).style('cursor', 'grab');
+            });
 
         // Add labels
         const label = svg.append('g')
@@ -1125,23 +1395,66 @@ class Neo4jGraphVisualization {
 
     // Event handlers
     onNodeClick(node) {
-        console.log('Node clicked:', node);
-        
+        console.log('🔵 Node clicked:', node);
+
+        // Select the node if NVL supports it
+        if (this.nvl && typeof this.nvl.selectNodes === 'function') {
+            this.nvl.selectNodes([node.id]);
+        }
+
         // Show node details in a tooltip or sidebar
         this.showNodeDetails(node);
-        
-        // Optionally expand the graph from this node
-        // this.expandFromNode(node);
+
+        // Log detailed node information
+        console.log('📋 Node details:', {
+            id: node.id,
+            labels: node.labels,
+            properties: node.properties
+        });
     }
-    
+
     onRelationshipClick(relationship) {
-        console.log('Relationship clicked:', relationship);
+        console.log('🔗 Relationship clicked:', relationship);
+
+        // Select the relationship if NVL supports it
+        if (this.nvl && typeof this.nvl.selectRelationships === 'function') {
+            this.nvl.selectRelationships([relationship.id]);
+        }
+
         this.showRelationshipDetails(relationship);
+
+        // Log detailed relationship information
+        console.log('📋 Relationship details:', {
+            id: relationship.id,
+            type: relationship.type,
+            properties: relationship.properties,
+            from: relationship.startNodeId,
+            to: relationship.endNodeId
+        });
     }
-    
+
     onCanvasClick() {
+        console.log('🖱️ Canvas clicked');
+
+        // Clear selections if NVL supports it
+        if (this.nvl && typeof this.nvl.clearSelection === 'function') {
+            this.nvl.clearSelection();
+        }
+
         // Clear any selections or details
         this.clearSelections();
+    }
+
+    onNodeHover(node, evt) {
+        // Show tooltip or highlight
+        console.log('🔵 Node hovered:', node.id);
+        // Could implement tooltip here
+    }
+
+    onRelationshipHover(relationship, evt) {
+        // Show tooltip or highlight
+        console.log('🔗 Relationship hovered:', relationship.id);
+        // Could implement tooltip here
     }
     
     showNodeDetails(node) {

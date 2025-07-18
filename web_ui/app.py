@@ -660,9 +660,13 @@ def get_graph_visualization_data(entity_name: str = "", limit: int = 50):
             if entity_name:
                 logger.info(f"🎯 Searching for entity-centered graph: {entity_name}")
                 # Get graph centered around specific entity with limit
+                # Handle name variations (spaces vs hyphens, case insensitive)
                 query = """
                 MATCH (center)
-                WHERE center.name CONTAINS $entity_name OR center.id CONTAINS $entity_name
+                WHERE toLower(center.name) CONTAINS toLower($entity_name)
+                   OR toLower(center.id) CONTAINS toLower($entity_name)
+                   OR toLower(replace(center.name, ' ', '-')) CONTAINS toLower(replace($entity_name, ' ', '-'))
+                   OR toLower(replace(center.name, '-', ' ')) CONTAINS toLower(replace($entity_name, '-', ' '))
                 WITH center LIMIT $center_limit
                 OPTIONAL MATCH (center)-[r]-(connected)
                 WITH collect(DISTINCT center) + collect(DISTINCT connected) as all_nodes,
@@ -918,6 +922,8 @@ def get_neo4j_data_for_entities(entity_names: list, depth: int = 3):
             WHERE ANY(name IN $entity_names WHERE
                 n.name CONTAINS name OR
                 toLower(n.name) CONTAINS toLower(name) OR
+                toLower(replace(n.name, ' ', '-')) CONTAINS toLower(replace(name, ' ', '-')) OR
+                toLower(replace(n.name, '-', ' ')) CONTAINS toLower(replace(name, '-', ' ')) OR
                 ANY(label IN labels(n) WHERE toLower(label) CONTAINS toLower(name))
             )
             WITH collect(DISTINCT n) as seed_nodes
