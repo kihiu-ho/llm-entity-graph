@@ -1,0 +1,96 @@
+# Docker Compose Override for Development with Multi-Platform Support
+# This file is automatically loaded by docker-compose and overrides settings in docker-compose.yml
+version: '3.8'
+
+services:
+  agentic-rag-combined:
+    # Development-specific settings with platform awareness
+    build:
+      target: base  # Use base stage for faster development builds
+      cache_from:
+        - python:3.11-slim
+      args:
+        - BUILDPLATFORM=${BUILDPLATFORM:-linux/amd64}
+        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+        # Development build optimizations
+        - PIP_NO_CACHE_DIR=0  # Enable pip cache for faster rebuilds
+    
+    environment:
+      - APP_ENV=development
+      - PRODUCTION_MODE=false
+      - LOG_LEVEL=DEBUG
+      - FLASK_ENV=development
+      
+      # Platform information for debugging
+      - DOCKER_PLATFORM=${TARGETPLATFORM:-linux/amd64}
+      - DOCKER_BUILDPLATFORM=${BUILDPLATFORM:-linux/amd64}
+      
+      # Development-specific settings
+      - FLASK_DEBUG=1
+      - PYTHONDONTWRITEBYTECODE=1
+    
+    volumes:
+      # Mount source code for development (hot reload)
+      - .:/app
+      - /app/venv  # Exclude virtual environment
+      - /app/__pycache__  # Exclude Python cache
+      - /app/.git  # Exclude git directory
+      - /app/node_modules  # Exclude node_modules if any
+    
+    # Override command for development with platform detection
+    command: >
+      /bin/bash -c "
+        echo 'Starting development mode on platform: ${TARGETPLATFORM:-unknown}';
+        echo 'Build platform: ${BUILDPLATFORM:-unknown}';
+        echo 'Architecture: $(uname -m)';
+        pip install -e . && 
+        /app/start.sh
+      "
+    
+    # Development port mapping (expose additional ports for debugging)
+    ports:
+      - "5000:5000"   # Web UI
+      - "8058:8058"   # API
+      - "5678:5678"   # Python debugger (debugpy)
+    
+    # Disable healthcheck in development for faster startup
+    healthcheck:
+      disable: true
+
+  web-ui:
+    build:
+      cache_from:
+        - python:3.11-slim
+      args:
+        - BUILDPLATFORM=${BUILDPLATFORM:-linux/amd64}
+        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+    
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - LOG_LEVEL=DEBUG
+      - DOCKER_PLATFORM=${TARGETPLATFORM:-linux/amd64}
+    
+    volumes:
+      # Mount web UI source for development
+      - ./web_ui:/app/web_ui
+      - ./static:/app/static
+      - ./templates:/app/templates
+    
+    # Override command for development
+    command: >
+      /bin/bash -c "
+        echo 'Starting Web UI development mode on platform: ${TARGETPLATFORM:-unknown}';
+        python web_ui/start.py --host 0.0.0.0 --port 5000 --debug
+      "
+    
+    # Disable healthcheck in development
+    healthcheck:
+      disable: true
+
+# Development-specific networks with custom configuration
+networks:
+  agentic-rag-network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: agentic-rag-dev

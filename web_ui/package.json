@@ -10,13 +10,18 @@
     "clean": "rm -rf static/js/dist node_modules package-lock.json"
   },
   "dependencies": {
-    "@neo4j-nvl/base": "^0.3.8"
+    "@neo4j-nvl/base": "^0.3.8",
+    "@neo4j-nvl/interaction-handlers": "^0.3.8"
   },
   "devDependencies": {
     "webpack": "^5.88.0",
     "webpack-cli": "^5.1.0"
   },
-  "keywords": ["neo4j", "graph", "visualization"],
+  "keywords": [
+    "neo4j",
+    "graph",
+    "visualization"
+  ],
   "author": "",
   "license": "MIT"
 }

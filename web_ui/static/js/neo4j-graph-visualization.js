@@ -171,7 +171,20 @@ class Neo4jGraphVisualization {
     closeGraphModal() {
         document.getElementById('graph-modal').style.display = 'none';
         if (this.nvl) {
-            this.nvl.clearGraph();
+            try {
+                // NVL doesn't have clearGraph, use restart instead
+                if (typeof this.nvl.restart === 'function') {
+                    this.nvl.restart();
+                    console.log('✅ NVL graph cleared using restart()');
+                } else if (typeof this.nvl.clear === 'function') {
+                    this.nvl.clear();
+                    console.log('✅ NVL graph cleared using clear()');
+                } else {
+                    console.log('ℹ️ No clear method available, graph will remain');
+                }
+            } catch (error) {
+                console.warn('⚠️ Failed to clear NVL graph:', error);
+            }
         }
     }
     
@@ -311,75 +324,162 @@ class Neo4jGraphVisualization {
         try {
             console.log('🎮 Setting up NVL interaction modules...');
 
-            // Check different possible locations for interaction modules
-            console.log('🔍 Checking for interaction modules in various locations...');
-            console.log('  - window.NVL:', typeof window.NVL);
-            console.log('  - window.Neo4jNVL:', typeof window.Neo4jNVL);
+            // Check if NVL has interaction modules
+            const NVLClass = window.NVL || window.Neo4jNVL;
+            if (!NVLClass) {
+                console.log('⚠️ NVL class not found, using fallback interactions');
+                this.setupFallbackInteractions();
+                return;
+            }
+
+            console.log('🔍 Checking for interaction modules...');
+            console.log('  - NVLClass:', typeof NVLClass);
+            console.log('  - NVLClass.ZoomInteraction:', typeof NVLClass.ZoomInteraction);
+            console.log('  - NVLClass.PanInteraction:', typeof NVLClass.PanInteraction);
+            console.log('  - NVLClass.DragNodeInteraction:', typeof NVLClass.DragNodeInteraction);
+            console.log('  - NVLClass.ClickInteraction:', typeof NVLClass.ClickInteraction);
+            console.log('  - NVLClass.HoverInteraction:', typeof NVLClass.HoverInteraction);
+            console.log('  - NVLClass.LassoInteraction:', typeof NVLClass.LassoInteraction);
+
+            // Check if interaction handlers are available in different locations
+            console.log('🔍 Checking alternative interaction locations...');
             console.log('  - window.NVLInteractions:', typeof window.NVLInteractions);
+            console.log('  - window.NVLInteractions.DragNodeInteraction:', typeof window.NVLInteractions?.DragNodeInteraction);
+            console.log('  - window.Neo4jNVL.DragNodeInteraction:', typeof window.Neo4jNVL?.DragNodeInteraction);
+            console.log('  - window.NVL.DragNodeInteraction:', typeof window.NVL?.DragNodeInteraction);
 
-            // Check if interaction modules are available in different locations
-            const interactionSources = [
-                window.NVL,
-                window.Neo4jNVL,
-                window.NVLInteractions,
-                this.nvl?.constructor // Check the NVL constructor itself
-            ];
+            // Set up interactions using proper NVL API
+            this.interactions = [];
 
-            let interactionModules = null;
-            for (const source of interactionSources) {
-                if (source && (
-                    source.ZoomInteraction ||
-                    source.PanInteraction ||
-                    source.DragNodeInteraction ||
-                    source.ClickInteraction ||
-                    source.HoverInteraction
-                )) {
-                    interactionModules = source;
-                    console.log('✅ Found interaction modules in:', source);
-                    break;
+            // Try to get interaction handlers from different locations
+            const InteractionHandlers = window.NVLInteractions || NVLClass || {};
+
+            // 1. Set up zoom interaction
+            const ZoomInteraction = InteractionHandlers.ZoomInteraction || NVLClass.ZoomInteraction || window.NVL?.ZoomInteraction;
+            if (ZoomInteraction) {
+                try {
+                    const zoomInteraction = new ZoomInteraction(this.nvl);
+                    zoomInteraction.updateCallback('onZoom', (zoomLevel) => {
+                        console.log('🔍 Zoom level:', zoomLevel);
+                        this.onZoom(zoomLevel);
+                    });
+                    this.interactions.push(zoomInteraction);
+                    console.log('✅ Zoom interaction enabled');
+                } catch (error) {
+                    console.warn('⚠️ Failed to setup zoom interaction:', error);
                 }
             }
 
-            if (interactionModules) {
-                console.log('✅ NVL interaction modules found, setting up...');
-
-                // Set up zoom interaction
-                if (interactionModules.ZoomInteraction) {
-                    this.zoomInteraction = new interactionModules.ZoomInteraction(this.nvl);
-                    console.log('✅ Zoom interaction enabled');
-                }
-
-                // Set up pan interaction
-                if (interactionModules.PanInteraction) {
-                    this.panInteraction = new interactionModules.PanInteraction(this.nvl);
+            // 2. Set up pan interaction
+            const PanInteraction = InteractionHandlers.PanInteraction || NVLClass.PanInteraction || window.NVL?.PanInteraction;
+            if (PanInteraction) {
+                try {
+                    const panInteraction = new PanInteraction(this.nvl);
+                    panInteraction.updateCallback('onPan', (panning) => {
+                        console.log('🖱️ Panning:', panning);
+                        this.onPan(panning);
+                    });
+                    this.interactions.push(panInteraction);
                     console.log('✅ Pan interaction enabled');
+                } catch (error) {
+                    console.warn('⚠️ Failed to setup pan interaction:', error);
                 }
+            }
 
-                // Set up drag node interaction
-                if (interactionModules.DragNodeInteraction) {
-                    this.dragInteraction = new interactionModules.DragNodeInteraction(this.nvl);
+            // 3. Set up drag node interaction
+            const DragNodeInteraction = InteractionHandlers.DragNodeInteraction || NVLClass.DragNodeInteraction || window.NVL?.DragNodeInteraction;
+            if (DragNodeInteraction) {
+                try {
+                    const dragInteraction = new DragNodeInteraction(this.nvl);
+                    dragInteraction.updateCallback('onDrag', (nodes) => {
+                        console.log('🎯 Dragged nodes:', nodes);
+                        this.onDragNodes(nodes);
+                    });
+                    dragInteraction.updateCallback('onDragStart', (nodes) => {
+                        console.log('🎯 Started dragging nodes:', nodes);
+                        this.onDragStart(nodes);
+                    });
+                    dragInteraction.updateCallback('onDragEnd', (nodes) => {
+                        console.log('🎯 Finished dragging nodes:', nodes);
+                        this.onDragEnd(nodes);
+                    });
+                    this.interactions.push(dragInteraction);
                     console.log('✅ Drag node interaction enabled');
+                } catch (error) {
+                    console.warn('⚠️ Failed to setup drag interaction:', error);
                 }
+            }
 
-                // Set up click interaction with selection
-                if (interactionModules.ClickInteraction) {
-                    this.clickInteraction = new interactionModules.ClickInteraction(this.nvl, {
-                        selectOnClick: true
+            // 4. Set up click interaction
+            const ClickInteraction = InteractionHandlers.ClickInteraction || NVLClass.ClickInteraction || window.NVL?.ClickInteraction;
+            if (ClickInteraction) {
+                try {
+                    const clickInteraction = new ClickInteraction(this.nvl);
+                    clickInteraction.updateCallback('onNodeClick', (node) => {
+                        console.log('🔵 Node clicked:', node);
+                        this.onNodeClick(node);
                     });
-                    console.log('✅ Click interaction enabled');
+                    clickInteraction.updateCallback('onRelationshipClick', (relationship) => {
+                        console.log('🔗 Relationship clicked:', relationship);
+                        this.onRelationshipClick(relationship);
+                    });
+                    clickInteraction.updateCallback('onCanvasClick', (event) => {
+                        console.log('🖱️ Canvas clicked:', event);
+                        this.onCanvasClick(event);
+                    });
+                    clickInteraction.updateCallback('onNodeDoubleClick', (node) => {
+                        console.log('🔵 Node double-clicked:', node);
+                        this.onNodeDoubleClick(node);
+                    });
+                    clickInteraction.updateCallback('onRelationshipDoubleClick', (relationship) => {
+                        console.log('🔗 Relationship double-clicked:', relationship);
+                        this.onRelationshipDoubleClick(relationship);
+                    });
+                    this.interactions.push(clickInteraction);
+                    console.log('✅ Click interaction enabled with custom handlers');
+                } catch (error) {
+                    console.warn('⚠️ Failed to setup click interaction:', error);
                 }
+            }
 
-                // Set up hover interaction with shadow
-                if (interactionModules.HoverInteraction) {
-                    this.hoverInteraction = new interactionModules.HoverInteraction(this.nvl, {
-                        drawShadowOnHover: true
+            // 5. Set up hover interaction
+            const HoverInteraction = InteractionHandlers.HoverInteraction || NVLClass.HoverInteraction || window.NVL?.HoverInteraction;
+            if (HoverInteraction) {
+                try {
+                    const hoverInteraction = new HoverInteraction(this.nvl);
+                    hoverInteraction.updateCallback('onHover', (element, hitElements, event) => {
+                        console.log('🎯 Hovered element:', element);
+                        console.log('🎯 Hit elements:', hitElements);
+                        this.onHover(element, hitElements, event);
                     });
+                    this.interactions.push(hoverInteraction);
                     console.log('✅ Hover interaction enabled');
+                } catch (error) {
+                    console.warn('⚠️ Failed to setup hover interaction:', error);
                 }
+            }
 
-                console.log('🎮 All available NVL interactions set up successfully');
-            } else {
-                console.log('⚠️ NVL interaction modules not found, using fallback event listeners...');
+            // 6. Set up lasso interaction
+            const LassoInteraction = InteractionHandlers.LassoInteraction || NVLClass.LassoInteraction || window.NVL?.LassoInteraction;
+            if (LassoInteraction) {
+                try {
+                    const lassoInteraction = new LassoInteraction(this.nvl);
+                    lassoInteraction.updateCallback('onLassoSelect', ({ nodes, rels }) => {
+                        console.log('🎯 Lasso selected elements:', nodes, rels);
+                        this.onLassoSelect(nodes, rels);
+                    });
+                    this.interactions.push(lassoInteraction);
+                    console.log('✅ Lasso interaction enabled');
+                } catch (error) {
+                    console.warn('⚠️ Failed to setup lasso interaction:', error);
+                }
+            }
+
+            console.log(`🎮 ${this.interactions.length} NVL interactions set up successfully`);
+
+            // If no interactions were set up, use fallback
+            if (this.interactions.length === 0) {
+                console.log('⚠️ No NVL interactions available, using fallback...');
                 this.setupFallbackInteractions();
             }
 
@@ -402,10 +502,65 @@ class Neo4jGraphVisualization {
         // Set up comprehensive event listeners for all interactions
         this.setupClickInteraction(container);
         this.setupHoverInteraction(container);
-        this.setupDragInteraction(container);
+        // Note: NVL has built-in drag functionality enabled via nodeDrag: true
+        // We don't need custom drag handlers as they interfere with NVL's native dragging
+        console.log('🎯 NVL built-in drag functionality is enabled via nodeDrag: true');
+        // this.setupDragInteraction(container); // Disabled to allow NVL native dragging
         this.setupZoomInteraction(container);
 
         console.log('✅ Fallback interactions set up successfully');
+    }
+
+    // Helper methods for enhanced drag functionality
+    updateNodePositionInData(nodeId, deltaX, deltaY) {
+        // Find the node in our current data and update its position
+        if (this.currentGraphData && this.currentGraphData.nodes) {
+            const node = this.currentGraphData.nodes.find(n => n.id === nodeId);
+            if (node) {
+                // Update node position if it has position data
+                if (node.x !== undefined && node.y !== undefined) {
+                    node.x += deltaX;
+                    node.y += deltaY;
+                    console.log(`🎯 Updated node ${nodeId} position to (${node.x}, ${node.y})`);
+
+                    // Try to re-render with updated data
+                    if (typeof this.nvl.updateElementsInGraph === 'function') {
+                        this.nvl.updateElementsInGraph([node], []);
+                        return true;
+                    }
+                } else {
+                    console.log(`🎯 Node ${nodeId} has no position data to update`);
+                }
+            }
+        }
+        return false;
+    }
+
+    storeDragDelta(nodeId, deltaX, deltaY) {
+        // Store drag deltas for potential future use or visual feedback
+        if (!this.dragDeltas) {
+            this.dragDeltas = new Map();
+        }
+
+        const currentDelta = this.dragDeltas.get(nodeId) || { x: 0, y: 0 };
+        currentDelta.x += deltaX;
+        currentDelta.y += deltaY;
+        this.dragDeltas.set(nodeId, currentDelta);
+
+        console.log(`🎯 Stored drag delta for ${nodeId}: (${currentDelta.x}, ${currentDelta.y})`);
+
+        // Provide visual feedback that drag is being tracked
+        this.showDragFeedback(nodeId, currentDelta);
+    }
+
+    showDragFeedback(nodeId, delta) {
+        // Visual feedback for drag operations
+        console.log(`🎯 Drag feedback: Node ${nodeId} moved by (${delta.x}, ${delta.y})`);
+
+        // Could implement visual indicators here, such as:
+        // - Highlighting the dragged node
+        // - Showing drag trail
+        // - Updating a status indicator
     }
 
     setupClickInteraction(container) {
@@ -467,18 +622,41 @@ class Neo4jGraphVisualization {
         let dragStartPos = null;
         let draggedNode = null;
 
+        // Log available NVL methods for debugging drag functionality
+        if (this.nvl) {
+            const nvlMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(this.nvl));
+            const dragRelatedMethods = nvlMethods.filter(method =>
+                method.toLowerCase().includes('node') ||
+                method.toLowerCase().includes('position') ||
+                method.toLowerCase().includes('move') ||
+                method.toLowerCase().includes('drag') ||
+                method.toLowerCase().includes('layout')
+            );
+            console.log('🎯 Available drag-related NVL methods:', dragRelatedMethods);
+        }
+
         container.addEventListener('mousedown', (evt) => {
             try {
                 if (this.nvl && typeof this.nvl.getHits === 'function') {
                     const hits = this.nvl.getHits(evt);
+                    console.log('🎯 Drag mousedown hits:', hits);
+
                     if (hits && hits.nvlTargets && hits.nvlTargets.nodes && hits.nvlTargets.nodes.length > 0) {
                         isDragging = true;
                         draggedNode = hits.nvlTargets.nodes[0];
                         dragStartPos = { x: evt.clientX, y: evt.clientY };
                         container.style.cursor = 'grabbing';
                         evt.preventDefault();
-                        console.log('🎯 Started dragging node:', draggedNode.id);
+
+                        // Extract node data properly
+                        const nodeData = draggedNode.data || draggedNode;
+                        const nodeName = nodeData.properties?.name || nodeData.id || 'Unknown';
+                        console.log(`🎯 Started dragging node: ${nodeName}`);
+                    } else {
+                        console.log('🎯 No nodes found for dragging');
                     }
+                } else {
+                    console.log('🎯 NVL getHits not available for drag');
                 }
             } catch (e) {
                 console.warn('⚠️ Drag start failed:', e);
@@ -494,9 +672,57 @@ class Neo4jGraphVisualization {
                     // Update drag position
                     dragStartPos = { x: evt.clientX, y: evt.clientY };
 
-                    // Try to update node position if NVL supports it
-                    if (this.nvl && typeof this.nvl.updateNodePosition === 'function') {
-                        this.nvl.updateNodePosition(draggedNode.id, deltaX, deltaY);
+                    // Extract node data properly
+                    const nodeData = draggedNode.data || draggedNode;
+                    const nodeId = nodeData.id;
+
+                    console.log(`🎯 Dragging node ${nodeId} by (${deltaX}, ${deltaY})`);
+
+                    // Try different NVL methods for updating node position
+                    if (this.nvl) {
+                        let positionUpdated = false;
+
+                        // Method 1: Try direct position update methods
+                        if (typeof this.nvl.updateNodePosition === 'function') {
+                            this.nvl.updateNodePosition(nodeId, deltaX, deltaY);
+                            positionUpdated = true;
+                        } else if (typeof this.nvl.moveNode === 'function') {
+                            this.nvl.moveNode(nodeId, deltaX, deltaY);
+                            positionUpdated = true;
+                        } else if (typeof this.nvl.setNodePosition === 'function') {
+                            // Calculate absolute position if needed
+                            this.nvl.setNodePosition(nodeId, evt.clientX, evt.clientY);
+                            positionUpdated = true;
+                        }
+
+                        // Method 2: Try updating node data and re-rendering
+                        if (!positionUpdated && typeof this.nvl.updateElementsInGraph === 'function') {
+                            try {
+                                // Update the node's position in our data and re-render
+                                this.updateNodePositionInData(nodeId, deltaX, deltaY);
+                                positionUpdated = true;
+                            } catch (error) {
+                                console.warn('⚠️ Failed to update node position via data update:', error);
+                            }
+                        }
+
+                        // Method 3: Try force layout manipulation
+                        if (!positionUpdated && typeof this.nvl.getLayout === 'function') {
+                            try {
+                                const layout = this.nvl.getLayout();
+                                if (layout && typeof layout.setNodePosition === 'function') {
+                                    layout.setNodePosition(nodeId, evt.clientX, evt.clientY);
+                                    positionUpdated = true;
+                                }
+                            } catch (error) {
+                                console.warn('⚠️ Failed to update node position via layout:', error);
+                            }
+                        }
+
+                        if (!positionUpdated) {
+                            // Store the drag delta for visual feedback even if we can't update position
+                            this.storeDragDelta(nodeId, deltaX, deltaY);
+                        }
                     }
 
                     evt.preventDefault();
@@ -508,7 +734,10 @@ class Neo4jGraphVisualization {
 
         container.addEventListener('mouseup', (evt) => {
             if (isDragging) {
-                console.log('🎯 Finished dragging node:', draggedNode?.id);
+                const nodeData = draggedNode?.data || draggedNode;
+                const nodeName = nodeData?.properties?.name || nodeData?.id || 'Unknown';
+                console.log(`🎯 Finished dragging node: ${nodeName}`);
+
                 isDragging = false;
                 draggedNode = null;
                 dragStartPos = null;
@@ -1063,13 +1292,70 @@ class Neo4jGraphVisualization {
             console.log('🔍 NVL type:', typeof this.nvl);
             console.log('🔍 NVL constructor:', this.nvl.constructor.name);
 
-            this.renderWithNVL(processedData, container);
+            // Add a small delay to ensure DOM is fully updated
+            setTimeout(() => {
+                this.renderWithNVL(processedData, container);
+            }, 100);
         } catch (error) {
             console.error('❌ Failed to render graph:', error);
             this.createFallbackVisualization();
         }
 
         console.log('✅ Graph rendering completed successfully');
+    }
+
+    validateGraphData(nodes, relationships) {
+        console.log('🔍 Validating graph data...');
+        console.log(`📊 Input: ${nodes.length} nodes, ${relationships.length} relationships`);
+
+        // Create a Set of all node IDs for fast lookup
+        const nodeIds = new Set(nodes.map(n => n.id));
+        console.log('📋 Available node IDs:', Array.from(nodeIds).slice(0, 5), '...');
+
+        // Filter relationships to only include those where both nodes exist
+        const validRelationships = [];
+        const orphanedRelationships = [];
+
+        relationships.forEach(rel => {
+            const fromExists = nodeIds.has(rel.from);
+            const toExists = nodeIds.has(rel.to);
+
+            if (fromExists && toExists) {
+                validRelationships.push(rel);
+            } else {
+                orphanedRelationships.push({
+                    id: rel.id,
+                    from: rel.from,
+                    to: rel.to,
+                    fromExists,
+                    toExists,
+                    type: rel.type
+                });
+            }
+        });
+
+        // Log validation results
+        console.log(`✅ Valid relationships: ${validRelationships.length}`);
+        if (orphanedRelationships.length > 0) {
+            console.warn(`⚠️ Filtered ${orphanedRelationships.length} orphaned relationships:`);
+            orphanedRelationships.slice(0, 5).forEach(rel => {
+                console.warn(`  - ${rel.type}: ${rel.from} -> ${rel.to} (from exists: ${rel.fromExists}, to exists: ${rel.toExists})`);
+            });
+            if (orphanedRelationships.length > 5) {
+                console.warn(`  ... and ${orphanedRelationships.length - 5} more`);
+            }
+        }
+
+        return {
+            nodes,
+            relationships: validRelationships,
+            stats: {
+                originalNodes: nodes.length,
+                originalRelationships: relationships.length,
+                validRelationships: validRelationships.length,
+                orphanedRelationships: orphanedRelationships.length
+            }
+        };
     }
 
     renderWithNVL(processedData, container) {
@@ -1103,9 +1389,13 @@ class Neo4jGraphVisualization {
                 // Method 1: Try addAndUpdateElementsInGraph (recommended for updating existing graph)
                 if (hasAddAndUpdate) {
                     try {
+                        // Validate and clean the graph data first
+                        const validatedData = this.validateGraphData(processedData.nodes, processedData.relationships);
+                        console.log('📊 Data validation completed:', validatedData.stats);
+
                         console.log('📡 Calling nvl.addAndUpdateElementsInGraph with:', {
-                            nodes: processedData.nodes.length,
-                            relationships: processedData.relationships.length,
+                            nodes: validatedData.nodes.length,
+                            relationships: validatedData.relationships.length,
                             containerDimensions: {
                                 width: container.clientWidth,
                                 height: container.clientHeight
@@ -1113,26 +1403,33 @@ class Neo4jGraphVisualization {
                         });
 
                         // Log sample data to verify captions
-                        if (processedData.nodes.length > 0) {
+                        if (validatedData.nodes.length > 0) {
                             console.log('📋 Sample node with caption:', {
-                                id: processedData.nodes[0].id,
-                                caption: processedData.nodes[0].caption,
-                                color: processedData.nodes[0].color,
-                                size: processedData.nodes[0].size
+                                id: validatedData.nodes[0].id,
+                                caption: validatedData.nodes[0].caption,
+                                color: validatedData.nodes[0].color,
+                                size: validatedData.nodes[0].size
                             });
                         }
-                        if (processedData.relationships.length > 0) {
+                        if (validatedData.relationships.length > 0) {
                             console.log('📋 Sample relationship with caption:', {
-                                id: processedData.relationships[0].id,
-                                caption: processedData.relationships[0].caption,
-                                color: processedData.relationships[0].color,
-                                width: processedData.relationships[0].width
+                                id: validatedData.relationships[0].id,
+                                caption: validatedData.relationships[0].caption,
+                                color: validatedData.relationships[0].color,
+                                width: validatedData.relationships[0].width
                             });
                         }
 
-                        this.nvl.addAndUpdateElementsInGraph(processedData.nodes, processedData.relationships);
+                        this.nvl.addAndUpdateElementsInGraph(validatedData.nodes, validatedData.relationships);
                         console.log('✅ nvl.addAndUpdateElementsInGraph called successfully');
                         renderSuccess = true;
+
+                        // Store current graph data for drag operations
+                        this.currentGraphData = {
+                            nodes: validatedData.nodes,
+                            relationships: validatedData.relationships
+                        };
+                        console.log('📊 Stored current graph data for drag operations');
 
                         // Try to fit the graph to view after a short delay
                         if (typeof this.nvl.fit === 'function') {
@@ -1152,10 +1449,21 @@ class Neo4jGraphVisualization {
                     }
                 } else if (hasAddElements) {
                     try {
+                        // Validate and clean the graph data first
+                        const validatedData = this.validateGraphData(processedData.nodes, processedData.relationships);
+                        console.log('📊 Data validation completed for addElementsToGraph:', validatedData.stats);
+
                         console.log('📡 Calling nvl.addElementsToGraph...');
-                        this.nvl.addElementsToGraph(processedData.nodes, processedData.relationships);
+                        this.nvl.addElementsToGraph(validatedData.nodes, validatedData.relationships);
                         console.log('✅ nvl.addElementsToGraph called successfully');
                         renderSuccess = true;
+
+                        // Store current graph data for drag operations
+                        this.currentGraphData = {
+                            nodes: validatedData.nodes,
+                            relationships: validatedData.relationships
+                        };
+                        console.log('📊 Stored current graph data for drag operations');
                     } catch (error) {
                         console.warn('⚠️ nvl.addElementsToGraph failed:', error);
                     }
@@ -1345,13 +1653,36 @@ class Neo4jGraphVisualization {
 
             data.relationships.forEach(rel => {
                 const relDiv = document.createElement('div');
-                const relColor = this.relationshipStyles[rel.type]?.color || '#999';
 
-                // Find node names
-                const fromNode = data.nodes.find(n => n.id === rel.from);
-                const toNode = data.nodes.find(n => n.id === rel.to);
-                const fromName = fromNode?.properties?.name || rel.from;
-                const toName = toNode?.properties?.name || rel.to;
+                // Get relationship type with fallbacks
+                const relType = rel.type || rel.relationship_type || rel.name || 'RELATES_TO';
+                const relColor = this.relationshipStyles[relType]?.color || '#999';
+
+                // Find node names - handle different relationship data formats
+                let fromNodeId, toNodeId, fromName, toName;
+
+                // Handle Neo4j format (from/to) vs agent format (startNodeId/endNodeId)
+                if (rel.from && rel.to) {
+                    // Neo4j format
+                    fromNodeId = rel.from;
+                    toNodeId = rel.to;
+                } else if (rel.startNodeId && rel.endNodeId) {
+                    // Agent format
+                    fromNodeId = rel.startNodeId;
+                    toNodeId = rel.endNodeId;
+                } else {
+                    // Fallback: try to extract from properties or use relationship type
+                    fromNodeId = rel.source || rel.source_entity || 'unknown';
+                    toNodeId = rel.target || rel.target_entity || 'unknown';
+                }
+
+                // Find nodes by ID
+                const fromNode = data.nodes.find(n => n.id === fromNodeId);
+                const toNode = data.nodes.find(n => n.id === toNodeId);
+
+                // Get names with multiple fallback options
+                fromName = fromNode?.properties?.name || fromNode?.name || rel.source_entity || rel.source || fromNodeId;
+                toName = toNode?.properties?.name || toNode?.name || rel.target_entity || rel.target || toNodeId;
 
                 relDiv.style.cssText = `
                     margin: 8px 0;
@@ -1364,7 +1695,7 @@ class Neo4jGraphVisualization {
 
                 relDiv.innerHTML = `
                     <span style="font-weight: bold;">${fromName}</span>
-                    <span style="color: ${relColor}; margin: 0 10px;">→ ${rel.type} →</span>
+                    <span style="color: ${relColor}; margin: 0 10px;">→ ${relType} →</span>
                     <span style="font-weight: bold;">${toName}</span>
                 `;
 
@@ -1445,18 +1776,339 @@ class Neo4jGraphVisualization {
         this.clearSelections();
     }
 
+    onNodeClick(node, evt) {
+        console.log('🔵 Node clicked:', node);
+
+        // Extract node data from NVL event structure
+        let nodeData = null;
+        if (node && node.data) {
+            nodeData = node.data;
+        } else if (node && (node.properties || node.id)) {
+            nodeData = node;
+        }
+
+        if (nodeData) {
+            const name = nodeData.properties?.name || nodeData.properties?.id || nodeData.id || 'Unknown';
+            const labels = nodeData.labels ? nodeData.labels.join(', ') : 'Unknown';
+            console.log(`🔵 Node: ${name} (${labels})`);
+
+            // Show node details in a simple way
+            this.showNodeDetails(nodeData);
+        } else {
+            console.log('🔵 Node: No valid data found');
+        }
+    }
+
+    onRelationshipClick(relationship, evt) {
+        console.log('🔗 Relationship clicked:', relationship);
+
+        // Extract relationship data from NVL event structure
+        let relData = null;
+        if (relationship && relationship.data) {
+            relData = relationship.data;
+        } else if (relationship && (relationship.type || relationship.id)) {
+            relData = relationship;
+        }
+
+        if (relData) {
+            const type = relData.type || 'Unknown';
+            console.log(`🔗 Relationship: ${type}`);
+
+            // Show relationship details
+            this.showRelationshipDetails(relData);
+        } else {
+            console.log('🔗 Relationship: No valid data found');
+        }
+    }
+
     onNodeHover(node, evt) {
-        // Show tooltip or highlight
-        console.log('🔵 Node hovered:', node.id);
-        // Could implement tooltip here
+        // Extract node data from NVL event structure
+        let nodeData = null;
+        if (node && node.data) {
+            nodeData = node.data;
+        } else if (node && (node.properties || node.id)) {
+            nodeData = node;
+        }
+
+        if (nodeData && nodeData.properties) {
+            const name = nodeData.properties.name || nodeData.properties.id || nodeData.id || 'Unknown';
+            const labels = nodeData.labels ? nodeData.labels.join(', ') : 'Unknown';
+            console.log(`🔵 Node hovered: ${name} (${labels})`);
+        } else {
+            console.log('🔵 Node hovered: undefined or no properties');
+        }
     }
 
     onRelationshipHover(relationship, evt) {
-        // Show tooltip or highlight
-        console.log('🔗 Relationship hovered:', relationship.id);
-        // Could implement tooltip here
+        // Extract relationship data from NVL event structure
+        let relData = null;
+        if (relationship && relationship.data) {
+            relData = relationship.data;
+        } else if (relationship && (relationship.type || relationship.id)) {
+            relData = relationship;
+        }
+
+        if (relData) {
+            const type = relData.type || 'Unknown';
+            console.log(`🔗 Relationship hovered: ${type}`);
+        } else {
+            console.log('🔗 Relationship hovered: undefined');
+        }
     }
-    
+
+    onCanvasHover(evt) {
+        // Optional: handle canvas hover
+    }
+
+    showNodeDetails(node) {
+        // Create a simple details display
+        const detailsContainer = document.getElementById('node-details');
+        if (detailsContainer) {
+            const name = node.properties?.name || node.properties?.id || node.id;
+            const labels = node.labels ? node.labels.join(', ') : 'Unknown';
+
+            detailsContainer.innerHTML = `
+                <h4>Node Details</h4>
+                <p><strong>Name:</strong> ${name}</p>
+                <p><strong>Type:</strong> ${labels}</p>
+                <p><strong>ID:</strong> ${node.id}</p>
+            `;
+            detailsContainer.style.display = 'block';
+        }
+    }
+
+    showRelationshipDetails(relationship) {
+        // Create a simple details display
+        const detailsContainer = document.getElementById('relationship-details');
+        if (detailsContainer) {
+            const type = relationship.type || 'Unknown';
+
+            detailsContainer.innerHTML = `
+                <h4>Relationship Details</h4>
+                <p><strong>Type:</strong> ${type}</p>
+                <p><strong>ID:</strong> ${relationship.id}</p>
+            `;
+            detailsContainer.style.display = 'block';
+        }
+    }
+
+    // Additional event handlers for comprehensive interaction support
+
+    onNodeDoubleClick(node) {
+        console.log('🔵 Node double-clicked:', node);
+        if (node && node.properties) {
+            const name = node.properties.name || node.properties.id || node.id;
+            console.log(`🔵 Double-clicked node: ${name}`);
+
+            // Expand node or show detailed view
+            this.expandNode(node);
+        }
+    }
+
+    onRelationshipDoubleClick(relationship) {
+        console.log('🔗 Relationship double-clicked:', relationship);
+        if (relationship) {
+            const type = relationship.type || 'Unknown';
+            console.log(`🔗 Double-clicked relationship: ${type}`);
+
+            // Show detailed relationship view
+            this.expandRelationship(relationship);
+        }
+    }
+
+    onZoom(zoomLevel) {
+        console.log('🔍 Zoom changed to:', zoomLevel);
+        // Update UI elements based on zoom level
+        this.updateZoomUI(zoomLevel);
+    }
+
+    onPan(panning) {
+        console.log('🖱️ Pan changed:', panning);
+        // Update UI elements based on panning
+        this.updatePanUI(panning);
+    }
+
+    onDragNodes(nodes) {
+        console.log('🎯 Dragging nodes:', nodes);
+        if (nodes && nodes.length > 0) {
+            const nodeNames = nodes.map(n => n.properties?.name || n.id || 'Unknown').slice(0, 3);
+            const displayText = nodeNames.length > 3 ?
+                `${nodeNames.join(', ')} and ${nodes.length - 3} more` :
+                nodeNames.join(', ');
+            console.log(`🎯 Dragging: ${displayText}`);
+
+            // Update real-time drag feedback
+            const selectionInfo = document.getElementById('selection-info');
+            if (selectionInfo) {
+                selectionInfo.innerHTML = `🎯 Dragging: ${displayText}`;
+                selectionInfo.style.display = 'block';
+            }
+
+            // Update zoom indicator with drag info
+            const zoomIndicator = document.getElementById('zoom-indicator');
+            if (zoomIndicator) {
+                zoomIndicator.innerHTML = `Dragging ${nodes.length} node(s)`;
+            }
+        }
+    }
+
+    onDragStart(nodes) {
+        console.log('🎯 Started dragging nodes:', nodes);
+        if (nodes && nodes.length > 0) {
+            const nodeNames = nodes.map(n => n.properties?.name || n.id).join(', ');
+            console.log(`🎯 Started dragging: ${nodeNames}`);
+
+            // Visual feedback for drag start
+            this.showDragFeedback(nodes, true);
+        }
+    }
+
+    onDragEnd(nodes) {
+        console.log('🎯 Finished dragging nodes:', nodes);
+        if (nodes && nodes.length > 0) {
+            const nodeNames = nodes.map(n => n.properties?.name || n.id).join(', ');
+            console.log(`🎯 Finished dragging: ${nodeNames}`);
+
+            // Visual feedback for drag end
+            this.showDragFeedback(nodes, false);
+        }
+    }
+
+    onHover(element, hitElements, event) {
+        console.log('🎯 Hover event:', element, hitElements);
+
+        if (element) {
+            if (element.type === 'node') {
+                this.onNodeHover(element);
+            } else if (element.type === 'relationship') {
+                this.onRelationshipHover(element);
+            }
+        }
+
+        // Show hover tooltip
+        this.showHoverTooltip(element, event);
+    }
+
+    onLassoSelect(nodes, relationships) {
+        console.log('🎯 Lasso selected:', nodes, relationships);
+
+        if (nodes && nodes.length > 0) {
+            const nodeNames = nodes.map(n => n.properties?.name || n.id).join(', ');
+            console.log(`🎯 Selected nodes: ${nodeNames}`);
+        }
+
+        if (relationships && relationships.length > 0) {
+            const relTypes = relationships.map(r => r.type || 'Unknown').join(', ');
+            console.log(`🎯 Selected relationships: ${relTypes}`);
+        }
+
+        // Update selection UI
+        this.updateSelectionUI(nodes, relationships);
+    }
+
+    // Helper methods for enhanced interaction functionality
+
+    expandNode(node) {
+        console.log('🔍 Expanding node:', node);
+        // Could implement node expansion logic here
+        // For example, load related nodes or show detailed properties
+        this.showNodeDetails(node);
+    }
+
+    expandRelationship(relationship) {
+        console.log('🔍 Expanding relationship:', relationship);
+        // Could implement relationship expansion logic here
+        this.showRelationshipDetails(relationship);
+    }
+
+    updateZoomUI(zoomLevel) {
+        // Update zoom indicator in UI
+        const zoomIndicator = document.querySelector('.zoom-indicator');
+        if (zoomIndicator) {
+            zoomIndicator.textContent = `Zoom: ${Math.round(zoomLevel * 100)}%`;
+        }
+    }
+
+    updatePanUI(panning) {
+        // Update pan indicator in UI if needed
+        console.log('📍 Pan position updated:', panning);
+    }
+
+    showDragFeedback(nodes, isDragging) {
+        // Visual feedback during drag operations
+        if (isDragging) {
+            console.log('🎯 Showing drag feedback for nodes');
+
+            // Update selection info panel
+            const selectionInfo = document.getElementById('selection-info');
+            if (selectionInfo && nodes && nodes.length > 0) {
+                const nodeNames = nodes.map(n => n.properties?.name || n.id || 'Unknown').slice(0, 3);
+                const displayText = nodeNames.length > 3 ?
+                    `${nodeNames.join(', ')} and ${nodes.length - 3} more` :
+                    nodeNames.join(', ');
+                selectionInfo.innerHTML = `🎯 Dragging: ${displayText}`;
+                selectionInfo.style.display = 'block';
+            }
+
+            // Could add visual indicators like highlighting
+            console.log(`🎯 Drag started for ${nodes.length} node(s)`);
+        } else {
+            console.log('🎯 Hiding drag feedback for nodes');
+
+            // Hide selection info panel
+            const selectionInfo = document.getElementById('selection-info');
+            if (selectionInfo) {
+                selectionInfo.style.display = 'none';
+            }
+
+            // Remove visual indicators
+            console.log(`🎯 Drag ended for ${nodes.length} node(s)`);
+        }
+    }
+
+    showHoverTooltip(element, event) {
+        // Show tooltip on hover
+        if (element && event) {
+            const tooltip = document.getElementById('graph-tooltip');
+            if (tooltip) {
+                let content = '';
+                if (element.type === 'node') {
+                    const name = element.properties?.name || element.id;
+                    const labels = element.labels ? element.labels.join(', ') : 'Unknown';
+                    content = `<strong>${name}</strong><br>Type: ${labels}`;
+                } else if (element.type === 'relationship') {
+                    const type = element.type || 'Unknown';
+                    content = `<strong>${type}</strong><br>Relationship`;
+                }
+
+                tooltip.innerHTML = content;
+                tooltip.style.display = 'block';
+                tooltip.style.left = event.clientX + 10 + 'px';
+                tooltip.style.top = event.clientY + 10 + 'px';
+            }
+        } else {
+            // Hide tooltip
+            const tooltip = document.getElementById('graph-tooltip');
+            if (tooltip) {
+                tooltip.style.display = 'none';
+            }
+        }
+    }
+
+    updateSelectionUI(nodes, relationships) {
+        // Update UI to show selection information
+        const selectionInfo = document.getElementById('selection-info');
+        if (selectionInfo) {
+            const nodeCount = nodes ? nodes.length : 0;
+            const relCount = relationships ? relationships.length : 0;
+            selectionInfo.innerHTML = `
+                <strong>Selection:</strong>
+                ${nodeCount} nodes, ${relCount} relationships
+            `;
+            selectionInfo.style.display = nodeCount > 0 || relCount > 0 ? 'block' : 'none';
+        }
+    }
+
     showNodeDetails(node) {
         console.log('🔍 showNodeDetails called with node:', node);
 
@@ -1494,14 +2146,45 @@ class Neo4jGraphVisualization {
     }
     
     showRelationshipDetails(relationship) {
+        if (!relationship) {
+            console.log('No relationship data to show');
+            return;
+        }
+
+        const type = relationship.type || 'Unknown';
+        let propertiesHtml = '';
+
+        if (relationship.properties && typeof relationship.properties === 'object') {
+            try {
+                propertiesHtml = Object.entries(relationship.properties)
+                    .map(([key, value]) => `${key}: ${value}`)
+                    .join('<br>');
+            } catch (error) {
+                console.warn('Error processing relationship properties:', error);
+                propertiesHtml = 'Properties unavailable';
+            }
+        } else {
+            propertiesHtml = 'No properties available';
+        }
+
         const details = `
-            <strong>${relationship.type}</strong><br>
-            ${Object.entries(relationship.properties)
-                .map(([key, value]) => `${key}: ${value}`)
-                .join('<br>')}
+            <strong>${type}</strong><br>
+            ${propertiesHtml}
         `;
-        
+
         console.log('Relationship details:', details);
+
+        // Update the details container if it exists
+        const detailsContainer = document.getElementById('relationship-details');
+        if (detailsContainer) {
+            detailsContainer.innerHTML = `
+                <h4>Relationship Details</h4>
+                <p><strong>Type:</strong> ${type}</p>
+                <p><strong>ID:</strong> ${relationship.id || 'Unknown'}</p>
+                ${propertiesHtml !== 'No properties available' ? `<p><strong>Properties:</strong><br>${propertiesHtml}</p>` : ''}
+            `;
+            detailsContainer.style.display = 'block';
+        }
     }
     
     clearSelections() {

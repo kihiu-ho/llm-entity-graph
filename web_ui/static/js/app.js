@@ -255,7 +255,12 @@ class AgenticRAGUI {
                                 case 'tools':
                                     toolsUsed = data.tools;
                                     break;
-                                    
+
+                                case 'graph_visualization':
+                                    console.log('Received graph visualization data:', data.data);
+                                    this.handleGraphVisualization(assistantMessage, data.data);
+                                    break;
+
                                 case 'end':
                                     if (toolsUsed.length > 0) {
                                         this.showToolsUsed(toolsUsed);
@@ -1051,6 +1056,237 @@ class AgenticRAGUI {
             this.graphViz.visualizeFromQuery(query, 3);
 
             this.showToast('info', 'Loading graph visualization...');
+        } else {
+            this.showToast('warning', 'Graph visualization not available');
+        }
+    }
+
+    // Handle automatic graph visualization from agent
+    handleGraphVisualization(messageElement, graphData) {
+        if (!graphData || !graphData.should_visualize) {
+            return;
+        }
+
+        // Create a graph visualization container within the message
+        const graphContainer = document.createElement('div');
+        graphContainer.className = 'inline-graph-container';
+
+        const relationshipCount = graphData.relationship_count || 0;
+        const entityCount = graphData.entity_count || graphData.entities.length;
+
+        const graphId = `inline-graph-${Date.now()}`;
+        graphContainer.innerHTML = `
+            <div class="inline-graph-header">
+                <h4><i class="fas fa-project-diagram"></i> Relationship Graph</h4>
+                <div class="inline-graph-info">
+                    <span class="entity-count"><i class="fas fa-circle"></i> ${entityCount} entities</span>
+                    <span class="relationship-count"><i class="fas fa-arrow-right"></i> ${relationshipCount} relationships</span>
+                    <button class="expand-graph-btn" data-graph-id="${graphId}">
+                        <i class="fas fa-expand"></i> Full View
+                    </button>
+                </div>
+            </div>
+            <div class="inline-graph-content" id="${graphId}">
+                <div class="graph-loading">
+                    <i class="fas fa-spinner fa-spin"></i> Loading relationship graph...
+                </div>
+            </div>
+        `;
+
+        // Add event listener for the expand button
+        const expandBtn = graphContainer.querySelector('.expand-graph-btn');
+        if (expandBtn) {
+            expandBtn.addEventListener('click', () => {
+                this.expandInlineGraph(expandBtn);
+            });
+        }
+
+        // Add the graph container to the message
+        const messageContent = messageElement.querySelector('.message-content');
+        if (messageContent) {
+            messageContent.appendChild(graphContainer);
+        }
+
+        // Load the graph visualization
+        this.loadInlineGraph(graphContainer, graphData);
+    }
+
+    // Load graph visualization in inline container
+    async loadInlineGraph(container, graphData) {
+        const graphContent = container.querySelector('.inline-graph-content');
+        const graphId = graphContent.id;
+
+        try {
+            // Check if we have relationship data from the agent
+            let graphVisualizationData = null;
+
+            if (graphData.relationships && graphData.relationships.length > 0) {
+                // Use the relationship data from the agent to create graph visualization data
+                console.log('📊 Using relationship data from agent:', graphData.relationships.length, 'relationships');
+                graphVisualizationData = this.convertRelationshipsToGraphData(graphData.relationships);
+            } else {
+                // Fallback: Fetch graph data from the API using the first entity
+                const primaryEntity = graphData.entities[0];
+                console.log('📡 Fetching graph data for entity:', primaryEntity);
+
+                const response = await fetch(`/api/graph/neo4j/visualize?entity=${encodeURIComponent(primaryEntity)}&limit=20`);
+
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch graph data: ${response.statusText}`);
+                }
+
+                graphVisualizationData = await response.json();
+            }
+
+            if (!graphVisualizationData || !graphVisualizationData.nodes || graphVisualizationData.nodes.length === 0) {
+                graphContent.innerHTML = `
+                    <div class="graph-empty">
+                        <i class="fas fa-info-circle"></i>
+                        <p>No graph data available for the relationship query</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Create a mini graph visualization
+            graphContent.innerHTML = `
+                <div class="mini-graph-stats">
+                    <span><i class="fas fa-circle"></i> ${graphVisualizationData.nodes.length} nodes</span>
+                    <span><i class="fas fa-arrow-right"></i> ${graphVisualizationData.relationships.length} relationships</span>
+                </div>
+                <div class="mini-graph-canvas" id="mini-canvas-${graphId}"></div>
+            `;
+
+            // Initialize a simplified graph visualization
+            this.initializeMiniGraph(`mini-canvas-${graphId}`, graphVisualizationData);
+
+        } catch (error) {
+            console.error('Failed to load inline graph:', error);
+            graphContent.innerHTML = `
+                <div class="graph-error">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Failed to load graph visualization</p>
+                </div>
+            `;
+        }
+    }
+
+    // Convert agent relationship data to graph visualization format
+    convertRelationshipsToGraphData(relationships) {
+        const nodes = new Map();
+        const links = [];
+
+        // Process relationships to extract nodes and links
+        relationships.forEach((rel, index) => {
+            const sourceEntity = rel.source_entity || rel.source || '';
+            const targetEntity = rel.target_entity || rel.target || '';
+            const relationshipType = rel.relationship_type || rel.relationship || 'RELATED_TO';
+
+            if (sourceEntity && targetEntity) {
+                // Add source node
+                if (!nodes.has(sourceEntity)) {
+                    nodes.set(sourceEntity, {
+                        id: `node_${nodes.size}`,
+                        labels: [this.getEntityType(sourceEntity)],
+                        properties: {
+                            name: sourceEntity,
+                            id: sourceEntity
+                        }
+                    });
+                }
+
+                // Add target node
+                if (!nodes.has(targetEntity)) {
+                    nodes.set(targetEntity, {
+                        id: `node_${nodes.size}`,
+                        labels: [this.getEntityType(targetEntity)],
+                        properties: {
+                            name: targetEntity,
+                            id: targetEntity
+                        }
+                    });
+                }
+
+                // Add relationship
+                links.push({
+                    id: `rel_${index}`,
+                    type: relationshipType,
+                    startNodeId: nodes.get(sourceEntity).id,
+                    endNodeId: nodes.get(targetEntity).id,
+                    properties: {
+                        name: relationshipType,
+                        fact: rel.fact || '',
+                        details: rel.relationship_description || rel.details || ''
+                    }
+                });
+            }
+        });
+
+        return {
+            nodes: Array.from(nodes.values()),
+            relationships: links,
+            metadata: {
+                node_count: nodes.size,
+                relationship_count: links.length
+            }
+        };
+    }
+
+    // Helper function to determine entity type based on name
+    getEntityType(entityName) {
+        if (!entityName) return 'Unknown';
+
+        // Simple heuristics to determine entity type
+        const name = entityName.toLowerCase();
+
+        // Check for person indicators
+        if (name.includes('mr.') || name.includes('ms.') || name.includes('dr.') ||
+            name.includes('prof.') || name.match(/\b[a-z]+ [a-z]+ [a-z]+\b/) ||
+            name.includes('chairman') || name.includes('ceo') || name.includes('director')) {
+            return 'Person';
+        }
+
+        // Check for company indicators
+        if (name.includes('company') || name.includes('corp') || name.includes('ltd') ||
+            name.includes('inc') || name.includes('club') || name.includes('organization') ||
+            name.includes('foundation') || name.includes('trust') || name.includes('group')) {
+            return 'Company';
+        }
+
+        // Check for document indicators
+        if (name.includes('.md') || name.includes('document') || name.includes('file') ||
+            name.includes('report') || name.includes('_')) {
+            return 'Document';
+        }
+
+        return 'Entity';
+    }
+
+    // Initialize mini graph with D3.js
+    initializeMiniGraph(canvasId, data) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+
+        // Create a simple D3.js visualization for the mini graph
+        // This is a simplified version for the inline display
+        canvas.innerHTML = `
+            <div style="text-align: center; padding: 20px; color: #666;">
+                <i class="fas fa-project-diagram" style="font-size: 2rem; margin-bottom: 10px;"></i>
+                <p>Graph visualization with ${data.nodes.length} nodes and ${data.relationships.length} relationships</p>
+                <small>Click "Full View" to see the interactive graph</small>
+            </div>
+        `;
+    }
+
+    // Expand inline graph to full modal
+    expandInlineGraph(button) {
+        const container = button.closest('.inline-graph-container');
+        const entityCount = container.querySelector('.entity-count').textContent;
+
+        // Extract entity name from the graph data (you might need to store this)
+        // For now, we'll use a generic approach
+        if (this.graphViz) {
+            this.graphViz.openGraphModal();
         } else {
             this.showToast('warning', 'Graph visualization not available');
         }

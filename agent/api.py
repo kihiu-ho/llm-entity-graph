@@ -200,15 +200,15 @@ async def get_conversation_context(
 def extract_tool_calls(result) -> List[ToolCall]:
     """
     Extract tool calls from Pydantic AI result.
-    
+
     Args:
         result: Pydantic AI result object
-    
+
     Returns:
         List of ToolCall objects
     """
     tools_used = []
-    
+
     try:
         # Get all messages from the result
         messages = result.all_messages()
@@ -270,6 +270,79 @@ def extract_tool_calls(result) -> List[ToolCall]:
         logger.warning(f"Failed to extract tool calls: {e}")
     
     return tools_used
+
+
+def extract_graph_visualization_data(result) -> Optional[Dict[str, Any]]:
+    """
+    Extract graph visualization data from Pydantic AI result.
+
+    Args:
+        result: Pydantic AI result object
+
+    Returns:
+        Graph visualization data dict or None
+    """
+    try:
+        # Get all messages from the result
+        messages = result.all_messages()
+
+        for message in messages:
+            if hasattr(message, 'parts'):
+                for part in message.parts:
+                    # Check if this is a tool return part
+                    if part.__class__.__name__ == 'ToolReturnPart':
+                        try:
+                            # Get the tool content
+                            tool_content = part.content if hasattr(part, 'content') else None
+
+                            if tool_content:
+                                logger.debug(f"Checking tool content for graph visualization: {type(tool_content)}")
+
+                                # Check if the result contains graph visualization data directly
+                                if isinstance(tool_content, dict) and 'graph_visualization' in tool_content:
+                                    graph_visualization_data = tool_content['graph_visualization'].copy()
+
+                                    # Include relationship data if available
+                                    if 'relationships' in tool_content:
+                                        graph_visualization_data['relationships'] = tool_content['relationships']
+                                        logger.info(f"Added {len(tool_content['relationships'])} relationships to graph visualization data")
+
+                                    logger.info(f"Found graph visualization data in tool result: {graph_visualization_data}")
+                                    return graph_visualization_data
+
+                                elif isinstance(tool_content, list) and tool_content:
+                                    # Check if any result has graph visualization metadata
+                                    for item in tool_content:
+                                        if hasattr(item, 'should_visualize_graph') and item.should_visualize_graph:
+                                            entities = getattr(item, 'graph_entities', [])
+                                            if entities:
+                                                graph_visualization_data = {
+                                                    'entities': entities,
+                                                    'should_visualize': True,
+                                                    'query': ''  # Will be filled by caller
+                                                }
+                                                logger.info(f"Extracted graph visualization data from list result: {graph_visualization_data}")
+                                                return graph_visualization_data
+
+                                # Also check if tool_content is a string that might be JSON
+                                elif isinstance(tool_content, str):
+                                    try:
+                                        parsed_content = json.loads(tool_content)
+                                        if isinstance(parsed_content, dict) and 'graph_visualization' in parsed_content:
+                                            graph_visualization_data = parsed_content['graph_visualization']
+                                            logger.info(f"Found graph visualization data in JSON string: {graph_visualization_data}")
+                                            return graph_visualization_data
+                                    except json.JSONDecodeError:
+                                        pass  # Not JSON, continue
+
+                        except Exception as e:
+                            logger.debug(f"Failed to extract graph data from tool return: {e}")
+                            continue
+
+    except Exception as e:
+        logger.warning(f"Failed to extract graph visualization data: {e}")
+
+    return None
 
 
 async def save_conversation_turn(
@@ -495,7 +568,15 @@ async def chat_stream(request: ChatRequest):
                 # Extract tools used from the final result
                 result = run.result
                 tools_used = extract_tool_calls(result)
-                
+
+                # Extract graph visualization data
+                graph_visualization_data = extract_graph_visualization_data(result)
+                if graph_visualization_data:
+                    # Add the user query to the graph visualization data
+                    graph_visualization_data['query'] = request.message
+                    logger.info(f"Sending graph visualization data: {graph_visualization_data}")
+                    yield f"data: {json.dumps({'type': 'graph_visualization', 'data': graph_visualization_data})}\n\n"
+
                 # Send tools used information
                 if tools_used:
                     tools_data = [

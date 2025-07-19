@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # Combined Agentic RAG API + Web UI Service with Multi-Platform Support
+  agentic-rag-combined:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64   # Intel/AMD x86_64
+        - linux/arm64   # Apple Silicon, ARM servers
+      args:
+        - BUILDPLATFORM=${BUILDPLATFORM:-linux/amd64}
+        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+    ports:
+      - "5000:5000"  # Web UI
+      - "8058:8058"  # API
+    environment:
+      # Application Configuration
+      - APP_ENV=production
+      - PRODUCTION_MODE=true
+      - LOG_LEVEL=INFO
+      
+      # Port Configuration
+      - APP_PORT=8058
+      - WEB_UI_PORT=5000
+      - APP_HOST=0.0.0.0
+      
+      # Database Configuration (UPDATE THESE!)
+      - DATABASE_URL=postgresql://user:password@host:port/database
+      - NEO4J_URI=neo4j+s://instance.databases.neo4j.io
+      - NEO4J_USERNAME=neo4j
+      - NEO4J_PASSWORD=your-neo4j-password
+      
+      # LLM Configuration (UPDATE THESE!)
+      - LLM_PROVIDER=openai
+      - LLM_API_KEY=your-openai-api-key
+      - EMBEDDING_API_KEY=your-openai-api-key
+      - LLM_CHOICE=gpt-4o-mini
+      - EMBEDDING_MODEL=text-embedding-3-small
+      
+      # Platform Information
+      - DOCKER_PLATFORM=${TARGETPLATFORM:-linux/amd64}
+      - DOCKER_BUILDPLATFORM=${BUILDPLATFORM:-linux/amd64}
+      
+      # Optional: Additional Configuration
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Optional: Mount local documents for ingestion
+      - ./documents:/app/documents:ro
+      # Optional: Mount logs directory
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - agentic-rag-network
+
+  # Optional: Separate Web UI Service (if you prefer separate containers)
+  web-ui:
+    build:
+      context: .
+      dockerfile: web_ui/Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
+      args:
+        - BUILDPLATFORM=${BUILDPLATFORM:-linux/amd64}
+        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+    ports:
+      - "5001:5000"  # Alternative port to avoid conflicts
+    environment:
+      - API_BASE_URL=http://agentic-rag-combined:8058
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+      - DOCKER_PLATFORM=${TARGETPLATFORM:-linux/amd64}
+    depends_on:
+      - agentic-rag-combined
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - agentic-rag-network
+    profiles:
+      - separate-ui  # Only start with: docker-compose --profile separate-ui up
+
+networks:
+  agentic-rag-network:
+    driver: bridge
+
+volumes:
+  # Optional: Persistent volumes for data
+  documents-data:
+    driver: local
+  logs-data:
+    driver: local

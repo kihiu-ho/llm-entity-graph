@@ -1,7 +1,15 @@
 // Neo4j NVL Bundle for Flask Web UI
-// This file bundles the Neo4j NVL library and exposes it globally
+// This file bundles the Neo4j NVL library and interaction handlers and exposes them globally
 
 import { NVL } from '@neo4j-nvl/base';
+import {
+    DragNodeInteraction,
+    ClickInteraction,
+    HoverInteraction,
+    ZoomInteraction,
+    PanInteraction,
+    LassoInteraction
+} from '@neo4j-nvl/interaction-handlers';
 
 // Expose NVL globally for use in vanilla JavaScript
 window.NVL = NVL;
@@ -9,14 +17,39 @@ window.NVL = NVL;
 // Also expose the actual NVL class for direct access
 window.Neo4jNVL = NVL;
 
+// Expose interaction handlers globally
+window.NVLInteractions = {
+    DragNodeInteraction,
+    ClickInteraction,
+    HoverInteraction,
+    ZoomInteraction,
+    PanInteraction,
+    LassoInteraction
+};
+
+// Also expose interaction handlers on the NVL object for easier access
+NVL.DragNodeInteraction = DragNodeInteraction;
+NVL.ClickInteraction = ClickInteraction;
+NVL.HoverInteraction = HoverInteraction;
+NVL.ZoomInteraction = ZoomInteraction;
+NVL.PanInteraction = PanInteraction;
+NVL.LassoInteraction = LassoInteraction;
+
 // Also expose as a module export for potential future use
-export { NVL };
+export { NVL, DragNodeInteraction, ClickInteraction, HoverInteraction, ZoomInteraction, PanInteraction, LassoInteraction };
 
 // Log successful loading
-console.log('✅ Neo4j NVL library loaded and bundled successfully');
+console.log('✅ Neo4j NVL library and interaction handlers loaded and bundled successfully');
 console.log('📦 NVL available as window.NVL:', typeof window.NVL);
 console.log('📦 NVL constructor available:', typeof NVL);
 console.log('📦 NVL constructor name:', NVL.name);
+console.log('🎮 Interaction handlers available as window.NVLInteractions:', typeof window.NVLInteractions);
+console.log('🎮 DragNodeInteraction available:', typeof DragNodeInteraction);
+console.log('🎮 ClickInteraction available:', typeof ClickInteraction);
+console.log('🎮 HoverInteraction available:', typeof HoverInteraction);
+console.log('🎮 ZoomInteraction available:', typeof ZoomInteraction);
+console.log('🎮 PanInteraction available:', typeof PanInteraction);
+console.log('🎮 LassoInteraction available:', typeof LassoInteraction);
 
 // Test NVL constructor availability
 try {

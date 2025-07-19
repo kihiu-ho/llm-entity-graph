@@ -1,0 +1,145 @@
+# Production Docker Compose Configuration with Multi-Platform Support
+# Use with: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
+version: '3.8'
+
+services:
+  agentic-rag-combined:
+    # Production optimizations with multi-platform support
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64   # Intel/AMD x86_64
+        - linux/arm64   # Apple Silicon, ARM servers
+      args:
+        - BUILDPLATFORM=${BUILDPLATFORM:-linux/amd64}
+        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+        # Production build optimizations
+        - PYTHON_VERSION=3.11
+        - PIP_NO_CACHE_DIR=1
+        - PIP_DISABLE_PIP_VERSION_CHECK=1
+    environment:
+      # Production environment variables
+      - APP_ENV=production
+      - PRODUCTION_MODE=true
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      
+      # Platform-specific optimizations
+      - DOCKER_PLATFORM=${TARGETPLATFORM:-linux/amd64}
+      - DOCKER_BUILDPLATFORM=${BUILDPLATFORM:-linux/amd64}
+      
+      # Performance tuning based on platform
+      - OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
+      - OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
+    
+    # Production resource limits (adjust based on platform)
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'      # Increased for better performance
+          memory: 8G       # Increased for larger models
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+    
+    # Production restart policy
+    restart: always
+    
+    # Production logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    
+    # Remove development volumes, use production-optimized volumes
+    volumes:
+      - ./documents:/app/documents:ro
+      - logs-data:/app/logs
+      - cache-data:/app/.cache
+
+  web-ui:
+    build:
+      context: .
+      dockerfile: web_ui/Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
+      args:
+        - BUILDPLATFORM=${BUILDPLATFORM:-linux/amd64}
+        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+    environment:
+      - FLASK_ENV=production
+      - LOG_LEVEL=INFO
+      - DOCKER_PLATFORM=${TARGETPLATFORM:-linux/amd64}
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  # Optional: Add a reverse proxy for production with multi-platform support
+  nginx:
+    image: nginx:alpine
+    platform: ${TARGETPLATFORM:-linux/amd64}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - static-files:/var/www/static:ro
+    depends_on:
+      - agentic-rag-combined
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    profiles:
+      - with-nginx
+
+  # Optional: Redis for caching (multi-platform)
+  redis:
+    image: redis:7-alpine
+    platform: ${TARGETPLATFORM:-linux/amd64}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    profiles:
+      - with-redis
+
+volumes:
+  logs-data:
+    driver: local
+  cache-data:
+    driver: local
+  static-files:
+    driver: local
+  redis-data:
+    driver: local
