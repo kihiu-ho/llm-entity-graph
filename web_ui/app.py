@@ -2459,16 +2459,18 @@ def ingest_files():
             raise save_error
 
         def generate_progress():
-            """Generate streaming progress updates with real ingestion."""
+            """Generate streaming progress updates with appropriate ingestion pipeline."""
             try:
-                logger.info("🚀 Starting real document ingestion pipeline")
+                # Use the unified ingestion pipeline for all modes
+                logger.info(f"🚀 Starting {ingestion_mode} document ingestion pipeline")
 
                 yield f"data: {json.dumps({'type': 'progress', 'current': 0, 'total': 100, 'message': 'Starting ingestion...'})}\n\n"
                 yield f"data: {json.dumps({'type': 'progress', 'current': 10, 'total': 100, 'message': f'Saved {len(saved_files)} files to temporary directory'})}\n\n"
 
-                # Call the real ingestion pipeline
-                yield from run_real_ingestion(
+                # Call the unified ingestion pipeline
+                yield from run_unified_ingestion(
                     temp_dir,
+                    ingestion_mode,
                     clean_before_ingest,
                     chunk_size,
                     chunk_overlap,
@@ -2496,6 +2498,276 @@ def ingest_files():
     except Exception as e:
         logger.error(f"Ingestion endpoint error: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+def convert_ingestion_results_to_dict(ingestion_result):
+    """
+    Convert IngestionResult objects to JSON-serializable dictionaries.
+
+    Args:
+        ingestion_result: Either a single IngestionResult or List[IngestionResult]
+
+    Returns:
+        List of dictionaries representing the ingestion results
+    """
+    try:
+        if isinstance(ingestion_result, list):
+            # Convert list of IngestionResult objects to list of dicts
+            return [
+                {
+                    'document_id': result.document_id,
+                    'title': result.title,
+                    'chunks_created': result.chunks_created,
+                    'entities_extracted': result.entities_extracted,
+                    'relationships_created': result.relationships_created,
+                    'processing_time_ms': result.processing_time_ms,
+                    'errors': result.errors
+                }
+                for result in ingestion_result
+            ]
+        elif hasattr(ingestion_result, 'document_id'):
+            # Single IngestionResult object
+            return [{
+                'document_id': ingestion_result.document_id,
+                'title': ingestion_result.title,
+                'chunks_created': ingestion_result.chunks_created,
+                'entities_extracted': ingestion_result.entities_extracted,
+                'relationships_created': ingestion_result.relationships_created,
+                'processing_time_ms': ingestion_result.processing_time_ms,
+                'errors': ingestion_result.errors
+            }]
+        else:
+            # Fallback for unexpected format
+            logger.warning(f"Unexpected ingestion_result format: {type(ingestion_result)}")
+            return []
+    except Exception as e:
+        logger.error(f"Failed to convert ingestion results to dict: {e}")
+        return []
+
+
+def run_unified_ingestion(temp_dir, ingestion_mode, clean_before_ingest, chunk_size, chunk_overlap,
+                         use_semantic, extract_entities, verbose, saved_files):
+    """
+    Run unified ingestion pipeline using the real ingestion system.
+    """
+    import json
+    import os
+    import time
+    import asyncio
+
+    try:
+        yield f"data: {json.dumps({'type': 'progress', 'current': 15, 'total': 100, 'message': f'Initializing {ingestion_mode} ingestion pipeline...'})}\n\n"
+
+        start_time = time.time()
+
+        # Import the real ingestion pipeline
+        from ingestion.ingest import DocumentIngestionPipeline
+        from agent.models import IngestionConfig
+
+        # Configure based on mode
+        if ingestion_mode == 'basic':
+            # Basic mode: optimized for speed and simplicity
+            config = IngestionConfig(
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                use_semantic_chunking=False,  # Disable for basic mode
+                extract_entities=True,       # Keep entity extraction
+                skip_graph_building=True     # Skip complex graph building for speed
+            )
+            logger.info("📋 Basic mode: Simple chunking, entity extraction, no graph building")
+        elif ingestion_mode == 'fast':
+            # Fast mode: minimal processing
+            config = IngestionConfig(
+                chunk_size=800,              # Smaller chunks for speed
+                chunk_overlap=80,
+                use_semantic_chunking=False,
+                extract_entities=False,      # Skip for speed
+                skip_graph_building=True
+            )
+            logger.info("📋 Fast mode: Small chunks, no entities, no graph building")
+        else:
+            # Full mode: complete processing
+            config = IngestionConfig(
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                use_semantic_chunking=use_semantic,
+                extract_entities=extract_entities,
+                skip_graph_building=False    # Full graph building
+            )
+            logger.info("📋 Full mode: Complete processing with graph building")
+
+        yield f"data: {json.dumps({'type': 'progress', 'current': 25, 'total': 100, 'message': 'Creating ingestion pipeline...'})}\n\n"
+
+        # Create pipeline
+        pipeline = DocumentIngestionPipeline(
+            config=config,
+            documents_folder=temp_dir,
+            clean_before_ingest=clean_before_ingest
+        )
+
+        yield f"data: {json.dumps({'type': 'progress', 'current': 35, 'total': 100, 'message': 'Starting document processing...'})}\n\n"
+
+        # Run the ingestion asynchronously
+        async def run_ingestion():
+            """Async wrapper for ingestion."""
+            try:
+                logger.info("📄 Running document ingestion...")
+                logger.info(f"📁 Documents folder: {temp_dir}")
+                logger.info(f"📄 Files to process: {saved_files}")
+
+                # Progress callback for the pipeline
+                def progress_callback(current: int, total: int):
+                    progress = 35 + (current * 45 // total)  # 35-80% for processing
+                    return progress
+
+                # Run ingestion with progress tracking
+                results = await pipeline.ingest_documents(progress_callback)
+
+                return results
+
+            except Exception as e:
+                logger.error(f"❌ Ingestion pipeline failed: {e}")
+                raise e
+
+        # Execute the ingestion
+        try:
+            # Check if we're already in an event loop
+            loop = asyncio.get_running_loop()
+            # We're in an event loop, create a task
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, run_ingestion())
+                ingestion_result = future.result()
+        except RuntimeError:
+            # No event loop running, safe to use asyncio.run()
+            ingestion_result = asyncio.run(run_ingestion())
+
+        yield f"data: {json.dumps({'type': 'progress', 'current': 80, 'total': 100, 'message': 'Processing completed, running cleanup...'})}\n\n"
+
+        # Cleanup phase
+        yield f"data: {json.dumps({'type': 'progress', 'current': 85, 'total': 100, 'message': 'Running cleanup...'})}\n\n"
+
+        # Run entity label cleanup
+        try:
+            import sys
+            import os
+            import asyncio
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if project_root not in sys.path:
+                sys.path.insert(0, project_root)
+
+            from cleanup_entity_labels import EntityLabelCleanup
+
+            # Create and run cleanup
+            cleanup = EntityLabelCleanup()
+
+            # Run cleanup in async context
+            async def run_cleanup():
+                await cleanup.initialize()
+                try:
+                    result = await cleanup.cleanup_entity_labels(verbose=False)
+                    return result
+                finally:
+                    await cleanup.close()
+
+            # Execute cleanup - check if we're already in an event loop
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an event loop, create a task
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, run_cleanup())
+                    cleanup_result = future.result()
+            except RuntimeError:
+                # No event loop running, safe to use asyncio.run()
+                cleanup_result = asyncio.run(run_cleanup())
+            logger.info(f"✅ Cleanup completed: {cleanup_result}")
+
+        except Exception as cleanup_error:
+            logger.warning(f"⚠️ Cleanup failed: {cleanup_error}")
+            cleanup_result = {'person_nodes_fixed': 0, 'company_nodes_fixed': 0, 'total_nodes_fixed': 0}
+
+        # Calculate final results from ingestion pipeline
+        if isinstance(ingestion_result, list):
+            # ingestion_result is a list of IngestionResult objects
+            total_chunks = sum(r.chunks_created for r in ingestion_result)
+            total_entities = sum(r.entities_extracted for r in ingestion_result)
+            total_relationships = sum(r.relationships_created for r in ingestion_result)
+            total_errors = sum(len(r.errors) for r in ingestion_result)
+
+            # Calculate average processing time
+            if ingestion_result:
+                avg_processing_time_ms = sum(r.processing_time_ms for r in ingestion_result) / len(ingestion_result)
+                processing_time = f"{avg_processing_time_ms:.1f}ms"
+            else:
+                processing_time = "0.0ms"
+        else:
+            # Fallback for unexpected format
+            logger.warning(f"Unexpected ingestion_result format: {type(ingestion_result)}")
+            total_chunks = 0
+            total_entities = 0
+            total_relationships = 0
+            total_errors = 0
+            processing_time = "0.0ms"
+
+        # Close the pipeline
+        try:
+            # Handle pipeline closing in async context
+            async def close_pipeline():
+                await pipeline.close()
+
+            # Execute pipeline closing
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an event loop, create a task
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, close_pipeline())
+                    future.result()
+            except RuntimeError:
+                # No event loop running, safe to use asyncio.run()
+                asyncio.run(close_pipeline())
+
+        except Exception as close_error:
+            logger.warning(f"⚠️ Failed to close pipeline: {close_error}")
+
+        logger.info(f"📊 {ingestion_mode.title()} ingestion results: {total_chunks} chunks, {total_entities} entities, {total_relationships} relationships, {processing_time}")
+
+        # Final results
+        results = {
+            'type': 'complete',
+            'message': f'{ingestion_mode.title()} ingestion completed successfully!',
+            'details': {
+                'files_processed': len(saved_files),
+                'file_names': [os.path.basename(f) for f in saved_files],
+                'chunk_size': chunk_size,
+                'chunk_overlap': chunk_overlap,
+                'use_semantic': use_semantic,
+                'extract_entities': extract_entities,
+                'clean_before_ingest': clean_before_ingest,
+                'mode': ingestion_mode,
+                'total_chunks': total_chunks,
+                'total_entities': total_entities,
+                'total_relationships': total_relationships,
+                'total_errors': total_errors,
+                'processing_time': processing_time,
+                'ingestion_details': convert_ingestion_results_to_dict(ingestion_result),
+                'cleanup_details': cleanup_result
+            }
+        }
+
+        yield f"data: {json.dumps({'type': 'progress', 'current': 100, 'total': 100, 'message': f'{ingestion_mode.title()} ingestion completed!'})}\n\n"
+        yield f"data: {json.dumps(results)}\n\n"
+
+        logger.info(f"✅ {ingestion_mode.title()} ingestion completed successfully")
+
+    except Exception as e:
+        mode_name = ingestion_mode.title() if 'ingestion_mode' in locals() else 'Ingestion'
+        logger.error(f"❌ {mode_name} failed: {e}")
+        import traceback
+        logger.error(f"❌ Error traceback: {traceback.format_exc()}")
+
+        yield f"data: {json.dumps({'type': 'error', 'message': f'{mode_name} failed: {str(e)}'})}\n\n"
 
 
 def run_real_ingestion(temp_dir, clean_before_ingest, chunk_size, chunk_overlap,
@@ -2606,12 +2878,30 @@ def run_real_ingestion(temp_dir, clean_before_ingest, chunk_size, chunk_overlap,
 
         yield f"data: {json.dumps({'type': 'progress', 'current': 90, 'total': 100, 'message': 'Finalizing ingestion...'})}\n\n"
 
-        # Calculate final results
-        total_chunks = ingestion_result.get('total_chunks', 0)
-        total_entities = ingestion_result.get('total_entities', 0)
-        processing_time = ingestion_result.get('processing_time', '0.0 seconds')
+        # Calculate final results from list of IngestionResult objects
+        if isinstance(ingestion_result, list):
+            # ingestion_result is a list of IngestionResult objects
+            total_chunks = sum(r.chunks_created for r in ingestion_result)
+            total_entities = sum(r.entities_extracted for r in ingestion_result)
+            total_relationships = sum(r.relationships_created for r in ingestion_result)
+            total_errors = sum(len(r.errors) for r in ingestion_result)
 
-        logger.info(f"📊 Final results: {total_chunks} chunks, {total_entities} entities, {processing_time}")
+            # Calculate average processing time
+            if ingestion_result:
+                avg_processing_time_ms = sum(r.processing_time_ms for r in ingestion_result) / len(ingestion_result)
+                processing_time = f"{avg_processing_time_ms:.1f}ms"
+            else:
+                processing_time = "0.0ms"
+        else:
+            # Fallback for unexpected format
+            logger.warning(f"Unexpected ingestion_result format: {type(ingestion_result)}")
+            total_chunks = 0
+            total_entities = 0
+            total_relationships = 0
+            total_errors = 0
+            processing_time = "0.0ms"
+
+        logger.info(f"📊 Final results: {total_chunks} chunks, {total_entities} entities, {total_relationships} relationships, {processing_time}")
 
         # Return final results
         results = {
@@ -2626,8 +2916,10 @@ def run_real_ingestion(temp_dir, clean_before_ingest, chunk_size, chunk_overlap,
                 'clean_before_ingest': clean_before_ingest,
                 'total_chunks': total_chunks,
                 'total_entities': total_entities,
+                'total_relationships': total_relationships,
+                'total_errors': total_errors,
                 'processing_time': processing_time,
-                'ingestion_details': ingestion_result,
+                'ingestion_details': convert_ingestion_results_to_dict(ingestion_result),
                 'cleanup_details': cleanup_result
             }
         }
@@ -2643,6 +2935,12 @@ def run_real_ingestion(temp_dir, clean_before_ingest, chunk_size, chunk_overlap,
         import traceback as tb
         full_traceback = tb.format_exc()
         logger.error(f"❌ Full error traceback:\n{full_traceback}")
+
+        # Check if the error is related to the list/dict issue
+        if "'list' object has no attribute 'get'" in str(e):
+            logger.error("❌ This appears to be the ingestion result format issue")
+            logger.error("❌ The ingestion pipeline returned a list but the code expected a dictionary")
+            logger.error("❌ This should now be fixed with the updated result handling code")
 
         error_result = {
             'type': 'result',

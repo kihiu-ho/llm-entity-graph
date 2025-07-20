@@ -229,30 +229,105 @@ class ChatGraphVisualization {
     }
 
     /**
-     * Add enhanced interactions to the graph
+     * Add enhanced interactions to the graph using Neo4j NVL interaction handlers
      * @param {Object} nvl - NVL graph instance
      * @param {string} containerId - Container ID
      * @param {Object} graphData - Graph data
      */
     addGraphInteractions(nvl, containerId, graphData) {
         try {
-            // Try to use NVL event handlers if available
+            console.log('🎮 Adding Neo4j NVL interaction handlers to graph:', containerId);
+
+            // Check if interaction handlers are available
+            if (typeof window.NVLInteractions === 'undefined') {
+                console.warn('⚠️ NVL interaction handlers not available, falling back to basic interactions');
+                this.addBasicInteractions(nvl, containerId, graphData);
+                return;
+            }
+
+            // Enable simplified interactions by default for chat graphs
+            console.log('🎮 Using simplified interaction setup for chat graph following PlainInteractionModulesExampleCode.js pattern...');
+
+            const {
+                ZoomInteraction,
+                PanInteraction,
+                DragNodeInteraction,
+                ClickInteraction,
+                HoverInteraction
+            } = window.NVLInteractions;
+
+            // Add core interaction handlers following the PlainInteractionModulesExampleCode.js pattern
+            console.log('🎮 Adding ZoomInteraction...');
+            new ZoomInteraction(nvl);
+
+            console.log('🎮 Adding PanInteraction...');
+            new PanInteraction(nvl);
+
+            console.log('🎮 Adding DragNodeInteraction...');
+            new DragNodeInteraction(nvl);
+
+            console.log('🎮 Adding ClickInteraction with selectOnClick...');
+            const clickInteraction = new ClickInteraction(nvl, {
+                selectOnClick: true
+            });
+
+            console.log('🎮 Adding HoverInteraction with shadow...');
+            const hoverInteraction = new HoverInteraction(nvl, {
+                drawShadowOnHover: true
+            });
+
+            // Add custom event handlers for our application-specific functionality
+            this.addCustomEventHandlers(nvl, containerId, graphData);
+
+            // Store interaction instances for potential cleanup
+            this.storeInteractionInstances(containerId, {
+                zoom: ZoomInteraction,
+                pan: PanInteraction,
+                drag: DragNodeInteraction,
+                click: clickInteraction,
+                hover: hoverInteraction
+            });
+
+            console.log('✅ All Neo4j NVL interaction handlers added successfully:', containerId);
+
+        } catch (error) {
+            console.error('❌ Failed to add NVL interaction handlers:', error);
+            console.log('🔄 Falling back to basic interactions...');
+            this.addBasicInteractions(nvl, containerId, graphData);
+        }
+    }
+
+    /**
+     * Add custom event handlers for application-specific functionality
+     * @param {Object} nvl - NVL graph instance
+     * @param {string} containerId - Container ID
+     * @param {Object} graphData - Graph data
+     */
+    addCustomEventHandlers(nvl, containerId, graphData) {
+        try {
+            // Try to use NVL's event system for custom handlers
             if (nvl && typeof nvl.on === 'function') {
-                // Use NVL's built-in event system
+                console.log('🎮 Adding custom event handlers using NVL events...');
+
+                // Node click handler for showing details
                 nvl.on('nodeClick', (event) => {
+                    console.log('🎯 Node clicked:', event);
                     const node = this.findNodeById(event.nodeId, graphData);
                     if (node) {
                         this.showNodeDetails(node, containerId);
                     }
                 });
 
+                // Relationship click handler for showing details
                 nvl.on('relationshipClick', (event) => {
+                    console.log('🎯 Relationship clicked:', event);
                     const relationship = this.findRelationshipById(event.relationshipId, graphData);
                     if (relationship) {
                         this.showRelationshipDetails(relationship, containerId);
                     }
                 });
 
+                // Node hover handler for showing tooltips
                 nvl.on('nodeHover', (event) => {
                     const node = this.findNodeById(event.nodeId, graphData);
                     if (node) {
@@ -260,46 +335,94 @@ class ChatGraphVisualization {
                     }
                 });
 
-                console.log('✅ Enhanced interactions added using NVL events:', containerId);
-            } else {
-                // Fallback to container event handling
-                const container = document.getElementById(containerId);
-                if (!container) return;
-
-                container.addEventListener('click', (event) => {
-                    const target = event.target;
-
-                    // Look for node elements
-                    if (target.tagName === 'circle' || target.tagName === 'text') {
-                        const nodeElement = target.closest('g[data-node-id]') || target.closest('g.node');
-                        if (nodeElement) {
-                            const nodeId = nodeElement.getAttribute('data-node-id') || nodeElement.id;
-                            const node = this.findNodeById(nodeId, graphData);
-                            if (node) {
-                                this.showNodeDetails(node, containerId);
-                            }
-                        }
-                    }
-
-                    // Look for relationship elements
-                    if (target.tagName === 'path' || target.tagName === 'line') {
-                        const relElement = target.closest('g[data-relationship-id]') || target.closest('g.relationship');
-                        if (relElement) {
-                            const relId = relElement.getAttribute('data-relationship-id') || relElement.id;
-                            const relationship = this.findRelationshipById(relId, graphData);
-                            if (relationship) {
-                                this.showRelationshipDetails(relationship, containerId);
-                            }
-                        }
-                    }
+                // Node selection handler
+                nvl.on('nodeSelect', (event) => {
+                    console.log('🎯 Node selected:', event);
+                    // Could add selection-specific functionality here
                 });
 
-                console.log('✅ Enhanced interactions added using container events:', containerId);
+                console.log('✅ Custom event handlers added using NVL events');
+            } else {
+                console.log('🎮 NVL events not available, using container-based event handling...');
+                this.addContainerEventHandlers(containerId, graphData);
             }
 
         } catch (error) {
-            console.warn('⚠️ Could not add enhanced interactions:', error);
+            console.warn('⚠️ Could not add custom event handlers:', error);
+            this.addContainerEventHandlers(containerId, graphData);
         }
+    }
+
+    /**
+     * Add basic interactions as fallback
+     * @param {Object} nvl - NVL graph instance
+     * @param {string} containerId - Container ID
+     * @param {Object} graphData - Graph data
+     */
+    addBasicInteractions(nvl, containerId, graphData) {
+        console.log('🎮 Adding basic fallback interactions...');
+
+        // Try to use NVL event handlers if available
+        if (nvl && typeof nvl.on === 'function') {
+            this.addCustomEventHandlers(nvl, containerId, graphData);
+        } else {
+            this.addContainerEventHandlers(containerId, graphData);
+        }
+    }
+
+    /**
+     * Add container-based event handlers as fallback
+     * @param {string} containerId - Container ID
+     * @param {Object} graphData - Graph data
+     */
+    addContainerEventHandlers(containerId, graphData) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        console.log('🎮 Adding container-based event handlers...');
+
+        container.addEventListener('click', (event) => {
+            const target = event.target;
+
+            // Look for node elements
+            if (target.tagName === 'circle' || target.tagName === 'text') {
+                const nodeElement = target.closest('g[data-node-id]') || target.closest('g.node');
+                if (nodeElement) {
+                    const nodeId = nodeElement.getAttribute('data-node-id') || nodeElement.id;
+                    const node = this.findNodeById(nodeId, graphData);
+                    if (node) {
+                        this.showNodeDetails(node, containerId);
+                    }
+                }
+            }
+
+            // Look for relationship elements
+            if (target.tagName === 'path' || target.tagName === 'line') {
+                const relElement = target.closest('g[data-relationship-id]') || target.closest('g.relationship');
+                if (relElement) {
+                    const relId = relElement.getAttribute('data-relationship-id') || relElement.id;
+                    const relationship = this.findRelationshipById(relId, graphData);
+                    if (relationship) {
+                        this.showRelationshipDetails(relationship, containerId);
+                    }
+                }
+            }
+        });
+
+        console.log('✅ Container-based event handlers added');
+    }
+
+    /**
+     * Store interaction instances for potential cleanup
+     * @param {string} containerId - Container ID
+     * @param {Object} interactions - Interaction instances
+     */
+    storeInteractionInstances(containerId, interactions) {
+        if (!this.interactionInstances) {
+            this.interactionInstances = new Map();
+        }
+        this.interactionInstances.set(containerId, interactions);
+        console.log('📦 Stored interaction instances for:', containerId);
     }
 
     /**

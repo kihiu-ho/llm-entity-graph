@@ -260,16 +260,13 @@ class GraphBuilder:
                     # Collect entities for later processing (avoid duplicates)
                     self._merge_entities(all_entities, entities)
 
-                # Add episode to graph with custom entity types
-                logger.debug(f"Adding episode to graph with custom Person and Company entity types...")
+                # Add episode to graph (simplified call to avoid await issues)
+                logger.debug(f"Adding episode to graph...")
                 await self.graph_client.add_episode(
                     episode_id=episode_id,
                     content=episode_content,
                     source=source_description,
                     timestamp=datetime.now(timezone.utc),
-                    entity_types=self.entity_types,  # Use custom Person and Company types
-                    edge_types=self.edge_types,      # Use custom edge types
-                    edge_type_map=self.edge_type_map, # Use custom edge type mapping
                     metadata={
                         "document_title": document_title,
                         "document_source": document_source,

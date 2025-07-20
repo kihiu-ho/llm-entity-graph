@@ -808,10 +808,18 @@ async def ingest_documents_endpoint(
     files: List[UploadFile] = File(...),
     config: str = Form(...)
 ):
-    """Handle document ingestion with file upload."""
+    """Handle document ingestion with file upload using the real ingestion pipeline."""
     try:
         # Parse configuration
         ingestion_config = json.loads(config)
+
+        # Extract configuration parameters
+        mode = ingestion_config.get('mode', 'basic')
+        chunk_size = ingestion_config.get('chunk_size', 8000)
+        chunk_overlap = ingestion_config.get('chunk_overlap', 800)
+        use_semantic = ingestion_config.get('use_semantic', False)
+        extract_entities = ingestion_config.get('extract_entities', True)
+        clean_before_ingest = ingestion_config.get('clean_before_ingest', False)
 
         # Create temporary directory
         temp_dir = tempfile.mkdtemp()
@@ -830,12 +838,79 @@ async def ingest_documents_endpoint(
             if not saved_files:
                 raise HTTPException(status_code=400, detail="No valid files to ingest")
 
-            # For now, return a simple success response
-            # In a full implementation, this would integrate with the ingestion pipeline
+            logger.info(f"Starting {mode} ingestion for {len(saved_files)} files")
+
+            # Import ingestion pipeline
+            from ingestion.ingest import DocumentIngestionPipeline
+            from agent.models import IngestionConfig
+
+            if mode == 'basic':
+                # Basic mode: simple processing without full NLP pipeline
+                config_obj = IngestionConfig(
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                    use_semantic_chunking=False,  # Always false for basic mode
+                    extract_entities=False,       # Use simple extraction for basic mode
+                    skip_graph_building=True      # Skip complex graph building
+                )
+            else:
+                # Full mode: complete processing
+                config_obj = IngestionConfig(
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                    use_semantic_chunking=use_semantic,
+                    extract_entities=extract_entities,
+                    skip_graph_building=False
+                )
+
+            # Create and run pipeline
+            pipeline = DocumentIngestionPipeline(
+                config=config_obj,
+                documents_folder=temp_dir,
+                clean_before_ingest=clean_before_ingest
+            )
+
+            # Run ingestion
+            results = await pipeline.ingest_documents()
+
+            # Process results
+            total_chunks = sum(r.chunks_created for r in results)
+            total_entities = sum(r.entities_extracted for r in results)
+            total_relationships = sum(r.relationships_created for r in results)
+            total_errors = sum(len(r.errors) for r in results)
+
+            # Calculate processing time
+            if results:
+                avg_processing_time_ms = sum(r.processing_time_ms for r in results) / len(results)
+                processing_time = f"{avg_processing_time_ms:.1f}ms"
+            else:
+                processing_time = "0.0ms"
+
+            # Close pipeline
+            await pipeline.close()
+
             return {
-                "message": "Files uploaded successfully",
+                "message": f"{mode.title()} ingestion completed successfully",
+                "mode": mode,
                 "files_processed": len(saved_files),
-                "files": [os.path.basename(f) for f in saved_files]
+                "files": [os.path.basename(f) for f in saved_files],
+                "total_chunks": total_chunks,
+                "total_entities": total_entities,
+                "total_relationships": total_relationships,
+                "total_errors": total_errors,
+                "processing_time": processing_time,
+                "results": [
+                    {
+                        "document_id": r.document_id,
+                        "title": r.title,
+                        "chunks_created": r.chunks_created,
+                        "entities_extracted": r.entities_extracted,
+                        "relationships_created": r.relationships_created,
+                        "processing_time_ms": r.processing_time_ms,
+                        "errors": r.errors
+                    }
+                    for r in results
+                ]
             }
 
         finally:

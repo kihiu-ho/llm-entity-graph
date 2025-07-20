@@ -786,6 +786,9 @@ class AgenticRAGUI {
     handleFileSelection(event) {
         const files = Array.from(event.target.files);
         this.addFiles(files);
+
+        // Clear the input value to allow selecting the same files again
+        event.target.value = '';
     }
 
     addFiles(files) {
@@ -855,6 +858,7 @@ class AgenticRAGUI {
 
         this.isIngesting = true;
         this.startIngestionBtn.disabled = true;
+        this.startIngestionBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
         this.cancelIngestionBtn.style.display = 'inline-block';
 
         this.showIngestionProgress();
@@ -917,22 +921,48 @@ class AgenticRAGUI {
             this.updateProgress(0, 'Ingestion failed');
         } finally {
             this.isIngesting = false;
-            this.startIngestionBtn.disabled = false;
             this.cancelIngestionBtn.style.display = 'none';
+
+            // Only reset if not completed successfully (completion handles its own reset)
+            if (!this.startIngestionBtn.innerHTML.includes('Completed')) {
+                this.resetIngestionUI();
+            }
         }
     }
 
     handleIngestionProgress(data) {
         if (data.type === 'progress') {
             const percent = Math.round((data.current / data.total) * 100);
-            this.updateProgress(percent, `Processing ${data.current}/${data.total} files...`);
+            this.updateProgress(percent, data.message || `Processing ${data.current}/${data.total}...`);
+        } else if (data.type === 'complete') {
+            // Handle completion
+            this.showIngestionResults(data.details);
+            this.updateProgress(100, 'Ingestion completed');
+            this.showToast('success', data.message || 'Document ingestion completed successfully');
+
+            // Update button to show completion
+            this.startIngestionBtn.innerHTML = '<i class="fas fa-check"></i> Completed';
+            this.startIngestionBtn.disabled = false;
+
+            // Auto-close modal after showing results for a moment
+            setTimeout(() => {
+                this.closeModal(this.ingestionModal);
+                this.resetIngestionUI();
+            }, 3000); // Close after 3 seconds
+
         } else if (data.type === 'result') {
+            // Legacy result handling
             this.showIngestionResults(data.results);
             this.updateProgress(100, 'Ingestion completed');
             this.showToast('success', 'Document ingestion completed successfully');
         } else if (data.type === 'error') {
             this.showToast('error', `Ingestion error: ${data.message}`);
             this.updateProgress(0, 'Ingestion failed');
+
+            // Reset button on error
+            this.resetIngestionUI();
+        } else if (data.type === 'warning') {
+            this.showToast('warning', data.message);
         }
     }
 
@@ -1026,11 +1056,26 @@ class AgenticRAGUI {
         }
     }
 
+    resetIngestionUI() {
+        // Reset button to original state based on selected mode
+        const selectedMode = document.querySelector('input[name="ingestion-mode"]:checked').value;
+        const modeTexts = {
+            'basic': 'Start Basic Ingestion',
+            'clean': 'Clean & Re-ingest All',
+            'fast': 'Start Fast Processing'
+        };
+
+        this.startIngestionBtn.innerHTML = `<i class="fas fa-play"></i> ${modeTexts[selectedMode]}`;
+        this.startIngestionBtn.disabled = this.selectedFiles.length === 0;
+        this.hideIngestionProgress();
+        this.hideIngestionResults();
+    }
+
     cancelIngestion() {
         this.isIngesting = false;
         this.updateProgress(0, 'Ingestion cancelled');
         this.showToast('warning', 'Ingestion cancelled');
-        this.startIngestionBtn.disabled = false;
+        this.resetIngestionUI();
         this.cancelIngestionBtn.style.display = 'none';
     }
 

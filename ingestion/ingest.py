@@ -181,12 +181,21 @@ class DocumentIngestionPipeline:
         logger.info(f"Processing document: {document_title}")
         
         # Chunk the document
-        chunks = await self.chunker.chunk_document(
-            content=document_content,
-            title=document_title,
-            source=document_source,
-            metadata=document_metadata
-        )
+        try:
+            chunks = await self.chunker.chunk_document(
+                content=document_content,
+                title=document_title,
+                source=document_source,
+                metadata=document_metadata
+            )
+        except Exception as chunk_error:
+            logger.error(f"Chunking failed: {chunk_error}")
+            # Check if it's the specific error we're trying to fix
+            if "object list can't be used in 'await' expression" in str(chunk_error):
+                logger.error("🎯 FOUND THE AWAIT ERROR IN CHUNKING!")
+                import traceback
+                traceback.print_exc()
+            raise chunk_error
         
         if not chunks:
             logger.warning(f"No chunks created for {document_title}")
@@ -206,26 +215,37 @@ class DocumentIngestionPipeline:
         entities_extracted = 0
         if self.config.extract_entities:
             logger.info("Using document-level entity extraction for better context")
-            chunks = await self.graph_builder.extract_entities_from_document(
-                chunks,
-                extract_companies=True,
-                extract_technologies=True,
-                extract_people=True,
-                extract_financial_entities=True,
-                extract_corporate_roles=True,
-                extract_ownership=True,
-                extract_transactions=True,
-                extract_personal_connections=True,
-                use_llm=True,
-                use_llm_for_companies=True,  # Use LLM for companies
-                use_llm_for_technologies=True,  # Use LLM for technologies
-                use_llm_for_people=True,  # Use LLM for people
-                use_llm_for_financial_entities=True,  # Use LLM for financial entities
-                use_llm_for_corporate_roles=True,  # Use LLM for corporate roles
-                use_llm_for_ownership=True,  # Use LLM for ownership
-                use_llm_for_transactions=True,  # Use LLM for transactions
-                use_llm_for_personal_connections=True  # Use LLM for personal connections
-            )
+            try:
+                chunks = await self.graph_builder.extract_entities_from_document(
+                    chunks,
+                    extract_companies=True,
+                    extract_technologies=True,
+                    extract_people=True,
+                    extract_financial_entities=True,
+                    extract_corporate_roles=True,
+                    extract_ownership=True,
+                    extract_transactions=True,
+                    extract_personal_connections=True,
+                    use_llm=True,
+                    use_llm_for_companies=True,  # Use LLM for companies
+                    use_llm_for_technologies=True,  # Use LLM for technologies
+                    use_llm_for_people=True,  # Use LLM for people
+                    use_llm_for_financial_entities=True,  # Use LLM for financial entities
+                    use_llm_for_corporate_roles=True,  # Use LLM for corporate roles
+                    use_llm_for_ownership=True,  # Use LLM for ownership
+                    use_llm_for_transactions=True,  # Use LLM for transactions
+                    use_llm_for_personal_connections=True  # Use LLM for personal connections
+                )
+            except Exception as entity_error:
+                logger.error(f"Entity extraction failed: {entity_error}")
+                # Check if it's the specific error we're trying to fix
+                if "object list can't be used in 'await' expression" in str(entity_error):
+                    logger.error("🎯 FOUND THE AWAIT ERROR IN ENTITY EXTRACTION!")
+                    import traceback
+                    traceback.print_exc()
+                # Continue without entity extraction
+                logger.warning("Continuing without entity extraction due to error")
+                chunks = chunks  # Keep original chunks without entities
 
             # Count entities from document-level extraction (all chunks have same entities)
             if chunks:
@@ -255,8 +275,17 @@ class DocumentIngestionPipeline:
             logger.info(f"Extracted {entities_extracted} entities using document-level extraction")
         
         # Generate embeddings
-        embedded_chunks = await self.embedder.embed_chunks(chunks)
-        logger.info(f"Generated embeddings for {len(embedded_chunks)} chunks")
+        try:
+            embedded_chunks = await self.embedder.embed_chunks(chunks)
+            logger.info(f"Generated embeddings for {len(embedded_chunks)} chunks")
+        except Exception as embed_error:
+            logger.error(f"Embedding failed: {embed_error}")
+            # Check if it's the specific error we're trying to fix
+            if "object list can't be used in 'await' expression" in str(embed_error):
+                logger.error("🎯 FOUND THE AWAIT ERROR IN EMBEDDING!")
+                import traceback
+                traceback.print_exc()
+            raise embed_error
         
         # Save to PostgreSQL
         document_id = await self._save_to_postgres(

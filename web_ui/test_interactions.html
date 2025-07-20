@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Neo4j NVL Interactions</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .graph-container {
+            width: 100%;
+            height: 600px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            margin: 20px 0;
+            background: #fafafa;
+        }
+        .controls {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+        }
+        .controls button {
+            margin: 5px;
+            padding: 10px 15px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .controls button:hover {
+            background: #45a049;
+        }
+        .info {
+            margin: 10px 0;
+            padding: 10px;
+            background: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            border-radius: 4px;
+        }
+        .log {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 Neo4j NVL Interactions Test</h1>
+        
+        <div class="info">
+            <h3>📋 Test Instructions:</h3>
+            <ul>
+                <li><strong>Zoom:</strong> Use mouse wheel to zoom in/out</li>
+                <li><strong>Pan:</strong> Click and drag on empty space to pan</li>
+                <li><strong>Drag Nodes:</strong> Click and drag nodes to move them</li>
+                <li><strong>Click:</strong> Click nodes/relationships to select them (should show shadow)</li>
+                <li><strong>Hover:</strong> Hover over nodes to see shadow effect</li>
+            </ul>
+        </div>
+
+        <div class="controls">
+            <button onclick="testBasicGraph()">🔄 Load Basic Test Graph</button>
+            <button onclick="testWinfriedGraph()">👤 Load Winfried Test Graph</button>
+            <button onclick="clearGraph()">🗑️ Clear Graph</button>
+            <button onclick="clearLog()">📝 Clear Log</button>
+        </div>
+
+        <div id="graph-container" class="graph-container"></div>
+
+        <div class="log" id="interaction-log">
+            <strong>Interaction Log:</strong><br>
+            Ready to test interactions...
+        </div>
+    </div>
+
+    <!-- Load NVL Bundle -->
+    <script src="/static/js/nvl-bundle.js"></script>
+    
+    <script>
+        let currentNvl = null;
+        
+        function log(message) {
+            const logElement = document.getElementById('interaction-log');
+            const timestamp = new Date().toLocaleTimeString();
+            logElement.innerHTML += `<br>[${timestamp}] ${message}`;
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(message);
+        }
+
+        function clearLog() {
+            document.getElementById('interaction-log').innerHTML = '<strong>Interaction Log:</strong><br>Log cleared...';
+        }
+
+        function clearGraph() {
+            const container = document.getElementById('graph-container');
+            container.innerHTML = '';
+            currentNvl = null;
+            log('🗑️ Graph cleared');
+        }
+
+        function testBasicGraph() {
+            log('🔄 Loading basic test graph...');
+            
+            const container = document.getElementById('graph-container');
+            container.innerHTML = '';
+
+            // Create simple test data following the PlainInteractionModulesExampleCode.js pattern
+            const nodes = [
+                { id: '0', properties: { name: 'Person A', type: 'Person' } },
+                { id: '1', properties: { name: 'Company B', type: 'Company' } },
+                { id: '2', properties: { name: 'Organization C', type: 'Organization' } }
+            ];
+            
+            const rels = [
+                { id: '10', from: '0', to: '1', type: 'WORKS_AT' },
+                { id: '11', from: '0', to: '2', type: 'MEMBER_OF' }
+            ];
+
+            try {
+                // Create NVL instance
+                if (typeof NVL === 'undefined') {
+                    log('❌ NVL not available');
+                    return;
+                }
+
+                currentNvl = new NVL(container, nodes, rels);
+                log('✅ NVL instance created');
+
+                // Add interactions following PlainInteractionModulesExampleCode.js pattern
+                if (typeof window.NVLInteractions !== 'undefined') {
+                    const {
+                        ZoomInteraction,
+                        PanInteraction,
+                        DragNodeInteraction,
+                        ClickInteraction,
+                        HoverInteraction
+                    } = window.NVLInteractions;
+
+                    log('🎮 Adding ZoomInteraction...');
+                    new ZoomInteraction(currentNvl);
+
+                    log('🎮 Adding PanInteraction...');
+                    new PanInteraction(currentNvl);
+
+                    log('🎮 Adding DragNodeInteraction...');
+                    new DragNodeInteraction(currentNvl);
+
+                    log('🎮 Adding ClickInteraction with selectOnClick...');
+                    new ClickInteraction(currentNvl, { selectOnClick: true });
+
+                    log('🎮 Adding HoverInteraction with drawShadowOnHover...');
+                    new HoverInteraction(currentNvl, { drawShadowOnHover: true });
+
+                    log('✅ All interactions added successfully!');
+                } else {
+                    log('❌ NVL interactions not available');
+                }
+
+            } catch (error) {
+                log(`❌ Error creating graph: ${error.message}`);
+                console.error(error);
+            }
+        }
+
+        function testWinfriedGraph() {
+            log('👤 Loading Winfried test graph...');
+            
+            // Simulate the Winfried graph data
+            fetch('/chat/direct', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: 'who is "Winfried Engelbrecht Bresges"'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.graph_data && data.graph_data.nodes && data.graph_data.relationships) {
+                    log('✅ Received Winfried graph data');
+                    renderGraphData(data.graph_data);
+                } else {
+                    log('❌ No graph data received for Winfried');
+                    testBasicGraph(); // Fallback to basic graph
+                }
+            })
+            .catch(error => {
+                log(`❌ Error fetching Winfried data: ${error.message}`);
+                testBasicGraph(); // Fallback to basic graph
+            });
+        }
+
+        function renderGraphData(graphData) {
+            const container = document.getElementById('graph-container');
+            container.innerHTML = '';
+
+            try {
+                // Convert graph data to NVL format
+                const nodes = graphData.nodes.map(node => ({
+                    id: node.id,
+                    properties: node.properties || {}
+                }));
+
+                const rels = graphData.relationships.map(rel => ({
+                    id: rel.id,
+                    from: rel.startNodeId,
+                    to: rel.endNodeId,
+                    type: rel.type,
+                    properties: rel.properties || {}
+                }));
+
+                log(`📊 Rendering ${nodes.length} nodes and ${rels.length} relationships`);
+
+                // Create NVL instance
+                currentNvl = new NVL(container, nodes, rels);
+                log('✅ NVL instance created with real data');
+
+                // Add interactions
+                if (typeof window.NVLInteractions !== 'undefined') {
+                    const {
+                        ZoomInteraction,
+                        PanInteraction,
+                        DragNodeInteraction,
+                        ClickInteraction,
+                        HoverInteraction
+                    } = window.NVLInteractions;
+
+                    new ZoomInteraction(currentNvl);
+                    new PanInteraction(currentNvl);
+                    new DragNodeInteraction(currentNvl);
+                    new ClickInteraction(currentNvl, { selectOnClick: true });
+                    new HoverInteraction(currentNvl, { drawShadowOnHover: true });
+
+                    log('✅ All interactions added to real graph data!');
+                } else {
+                    log('❌ NVL interactions not available');
+                }
+
+            } catch (error) {
+                log(`❌ Error rendering graph data: ${error.message}`);
+                console.error(error);
+            }
+        }
+
+        // Initialize with basic graph on load
+        window.addEventListener('load', () => {
+            log('🚀 Page loaded, ready for testing');
+            setTimeout(testBasicGraph, 1000);
+        });
+    </script>
+</body>
+</html>

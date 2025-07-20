@@ -253,7 +253,16 @@ class SemanticChunker:
             temp_agent = Agent(self.model)
             
             response = await temp_agent.run(prompt)
+
+            # Handle response data properly - ensure it's a string
             result = response.data
+            if isinstance(result, list):
+                # If result is a list, join it or take the first element
+                result = result[0] if result else ""
+            elif not isinstance(result, str):
+                # Convert to string if it's not already
+                result = str(result)
+
             chunks = [chunk.strip() for chunk in result.split("---CHUNK---")]
             
             # Validate chunks
@@ -375,7 +384,7 @@ class SimpleChunker:
         """Initialize simple chunker."""
         self.config = config
     
-    def chunk_document(
+    async def chunk_document(
         self,
         content: str,
         title: str,

@@ -482,8 +482,13 @@ class Neo4jGraphVisualization {
 
             console.log(`🎮 ${this.interactions.length} NVL interactions set up successfully`);
 
-            // If no interactions were set up, use fallback
-            if (this.interactions.length === 0) {
+            // Option to use simplified interactions (following PlainInteractionModulesExampleCode.js)
+            const useSimplifiedInteractions = window.location.search.includes('simplified=true') || this.interactions.length === 0;
+
+            if (useSimplifiedInteractions) {
+                console.log('🎮 Using simplified interaction setup following PlainInteractionModulesExampleCode.js pattern...');
+                this.setupSimplifiedInteractions();
+            } else if (this.interactions.length === 0) {
                 console.log('⚠️ No NVL interactions available, using fallback...');
                 this.setupFallbackInteractions();
             }
@@ -492,6 +497,100 @@ class Neo4jGraphVisualization {
             console.error('❌ Failed to setup NVL interactions:', error);
             console.log('🔄 Setting up fallback interactions...');
             this.setupFallbackInteractions();
+        }
+    }
+
+    /**
+     * Setup simplified interactions following PlainInteractionModulesExampleCode.js pattern
+     * This is a cleaner, simpler approach that follows the official example
+     */
+    setupSimplifiedInteractions() {
+        try {
+            console.log('🎮 Setting up simplified Neo4j NVL interactions following PlainInteractionModulesExampleCode.js pattern...');
+
+            // Check if interaction handlers are available
+            if (typeof window.NVLInteractions === 'undefined') {
+                console.warn('⚠️ NVL interaction handlers not available');
+                return;
+            }
+
+            const {
+                ZoomInteraction,
+                PanInteraction,
+                DragNodeInteraction,
+                ClickInteraction,
+                HoverInteraction
+            } = window.NVLInteractions;
+
+            // Clear any existing interactions
+            this.interactions = [];
+
+            // Add core interaction handlers following the PlainInteractionModulesExampleCode.js pattern
+            console.log('🎮 Adding ZoomInteraction...');
+            new ZoomInteraction(this.nvl);
+
+            console.log('🎮 Adding PanInteraction...');
+            new PanInteraction(this.nvl);
+
+            console.log('🎮 Adding DragNodeInteraction...');
+            new DragNodeInteraction(this.nvl);
+
+            console.log('🎮 Adding ClickInteraction with selectOnClick...');
+            new ClickInteraction(this.nvl, { selectOnClick: true });
+
+            console.log('🎮 Adding HoverInteraction with drawShadowOnHover...');
+            new HoverInteraction(this.nvl, { drawShadowOnHover: true });
+
+            console.log('✅ All simplified Neo4j NVL interactions set up successfully following PlainInteractionModulesExampleCode.js pattern');
+
+            // Add custom event handlers for application-specific functionality
+            this.setupCustomEventHandlers();
+
+        } catch (error) {
+            console.error('❌ Failed to setup simplified NVL interactions:', error);
+        }
+    }
+
+    /**
+     * Setup custom event handlers for application-specific functionality
+     */
+    setupCustomEventHandlers() {
+        try {
+            if (!this.nvl || typeof this.nvl.on !== 'function') {
+                console.warn('⚠️ NVL event system not available for custom handlers');
+                return;
+            }
+
+            console.log('🎮 Adding custom event handlers...');
+
+            // Node click handler for showing details
+            this.nvl.on('nodeClick', (event) => {
+                console.log('🎯 Node clicked:', event);
+                this.onNodeClick(event);
+            });
+
+            // Relationship click handler for showing details
+            this.nvl.on('relationshipClick', (event) => {
+                console.log('🎯 Relationship clicked:', event);
+                this.onRelationshipClick(event);
+            });
+
+            // Node hover handler for showing tooltips
+            this.nvl.on('nodeHover', (event) => {
+                console.log('🎯 Node hovered:', event);
+                this.onHover(event);
+            });
+
+            // Node selection handler
+            this.nvl.on('nodeSelect', (event) => {
+                console.log('🎯 Node selected:', event);
+                // Could add selection-specific functionality here
+            });
+
+            console.log('✅ Custom event handlers added');
+
+        } catch (error) {
+            console.warn('⚠️ Could not add custom event handlers:', error);
         }
     }
 
