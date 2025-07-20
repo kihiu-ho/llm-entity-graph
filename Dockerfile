@@ -26,6 +26,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     procps \
     lsof \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Platform-specific pip optimizations
@@ -50,6 +52,13 @@ RUN pip install --no-cache-dir -r web_ui_requirements.txt
 
 # Copy application code
 COPY . .
+
+# Build Neo4j NVL bundle for web UI
+WORKDIR /app/web_ui
+RUN npm install && npm run build
+
+# Return to app directory
+WORKDIR /app
 
 # Fix line endings and ensure startup script exists and is executable
 # Handle both Unix and Windows line endings

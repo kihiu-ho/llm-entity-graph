@@ -1370,33 +1370,329 @@ async def search_people(
     limit: int = 10
 ) -> List[Dict[str, Any]]:
     """
-    Search for people in the knowledge graph.
+    Enhanced search for people in the knowledge graph with case-insensitive matching.
 
     Args:
-        name_query: Search by name
-        company: Filter by company
-        position: Filter by position
+        name_query: Search by name (case-insensitive, partial matches allowed)
+        company: Filter by company (case-insensitive)
+        position: Filter by position (case-insensitive)
         limit: Maximum number of results
 
     Returns:
-        List of person search results
+        List of person search results with enhanced relationship information
     """
-    # Build search query
-    query_parts = ["person"]
-    if name_query:
-        query_parts.append(f"named {name_query}")
-    if company:
-        query_parts.append(f"at {company}")
-    if position:
-        query_parts.append(f"with position {position}")
-
-    query = " ".join(query_parts)
-
     try:
+        # First try enhanced Neo4j search for better results
+        enhanced_results = await _enhanced_person_search_neo4j(
+            name_query=name_query,
+            company=company,
+            position=position,
+            limit=limit
+        )
+
+        if enhanced_results:
+            logger.info(f"Enhanced Neo4j search found {len(enhanced_results)} results")
+            return enhanced_results
+
+        # Fallback to Graphiti search
+        logger.info("Falling back to Graphiti search")
+        query_parts = ["person"]
+        if name_query:
+            query_parts.append(f"named {name_query}")
+        if company:
+            query_parts.append(f"at {company}")
+        if position:
+            query_parts.append(f"with position {position}")
+
+        query = " ".join(query_parts)
         results = await get_graph_client().search(query)
         return results[:limit]
+
     except Exception as e:
         logger.error(f"Person search failed: {e}")
+        return []
+
+
+async def _enhanced_person_search_neo4j(
+    name_query: Optional[str] = None,
+    company: Optional[str] = None,
+    position: Optional[str] = None,
+    limit: int = 10
+) -> List[Dict[str, Any]]:
+    """
+    Enhanced person search using direct Neo4j queries with case-insensitive matching.
+
+    Args:
+        name_query: Search by name (case-insensitive)
+        company: Filter by company (case-insensitive)
+        position: Filter by position (case-insensitive)
+        limit: Maximum number of results
+
+    Returns:
+        List of person search results with relationship information
+    """
+    try:
+        from neo4j import GraphDatabase
+        import os
+
+        # Get Neo4j configuration
+        neo4j_uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+        neo4j_user = os.getenv("NEO4J_USERNAME", os.getenv("NEO4J_USER", "neo4j"))
+        neo4j_password = os.getenv("NEO4J_PASSWORD")
+        neo4j_database = os.getenv("NEO4J_DATABASE", "neo4j")
+
+        if not neo4j_password:
+            logger.warning("Neo4j password not found, skipping enhanced search")
+            return []
+
+        # Create driver and session
+        driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
+        session = driver.session(database=neo4j_database)
+
+        # Build WHERE conditions
+        where_conditions = []
+        params = {}
+
+        if name_query:
+            # Case-insensitive name search
+            where_conditions.append("toLower(p.name) CONTAINS toLower($name_query)")
+            params["name_query"] = name_query
+
+        if company:
+            # Case-insensitive company search
+            where_conditions.append("toLower(p.company) CONTAINS toLower($company)")
+            params["company"] = company
+
+        if position:
+            # Case-insensitive position search
+            where_conditions.append("toLower(p.position) CONTAINS toLower($position)")
+            params["position"] = position
+
+        # Build the query
+        where_clause = " AND ".join(where_conditions) if where_conditions else "true"
+
+        cypher_query = f"""
+        MATCH (p:Person)
+        WHERE {where_clause}
+        RETURN p.name as name,
+               p.company as company,
+               p.position as position,
+               p.summary as summary,
+               p.uuid as uuid,
+               labels(p) as labels,
+               p as person_node
+        ORDER BY p.name
+        LIMIT $limit
+        """
+
+        params["limit"] = limit
+
+        logger.info(f"Executing enhanced person search: {cypher_query}")
+        logger.info(f"Parameters: {params}")
+
+        result = session.run(cypher_query, **params)
+        records = list(result)
+
+        enhanced_results = []
+        for record in records:
+            person_data = {
+                "name": record.get("name"),
+                "company": record.get("company"),
+                "position": record.get("position"),
+                "summary": record.get("summary", ""),
+                "uuid": record.get("uuid"),
+                "labels": record.get("labels", []),
+                "search_method": "enhanced_neo4j",
+                "relationships": []
+            }
+
+            # Extract relationships from summary and properties
+            relationships = _extract_relationships_from_person(person_data)
+
+            # Also search Graphiti for additional relationship information
+            try:
+                graphiti_relationships = await _extract_graphiti_relationships(person_data["name"])
+                relationships.extend(graphiti_relationships)
+            except Exception as e:
+                logger.warning(f"Failed to extract Graphiti relationships for {person_data['name']}: {e}")
+
+            # Remove duplicates based on relationship type and target
+            seen = set()
+            unique_relationships = []
+            for rel in relationships:
+                key = (rel["relationship_type"], rel["target"].lower())
+                if key not in seen:
+                    seen.add(key)
+                    unique_relationships.append(rel)
+
+            person_data["relationships"] = unique_relationships
+            enhanced_results.append(person_data)
+
+        session.close()
+        driver.close()
+
+        logger.info(f"Enhanced Neo4j search found {len(enhanced_results)} results")
+        return enhanced_results
+
+    except Exception as e:
+        logger.error(f"Enhanced Neo4j person search failed: {e}")
+        return []
+
+
+def _extract_relationships_from_person(person_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Extract relationships from person data including summary text.
+
+    Args:
+        person_data: Person node data
+
+    Returns:
+        List of extracted relationships
+    """
+    relationships = []
+    name = person_data.get("name", "")
+    company = person_data.get("company")
+    position = person_data.get("position", "")
+    summary = person_data.get("summary", "")
+
+    # Extract from company property
+    if company:
+        rel_type = "WORKS_AT"
+        if position:
+            if "ceo" in position.lower():
+                rel_type = "CEO_OF"
+            elif "chair" in position.lower() or "chairman" in position.lower():
+                rel_type = "CHAIRMAN_OF"
+            elif "director" in position.lower():
+                rel_type = "DIRECTOR_OF"
+            elif "executive" in position.lower():
+                rel_type = "EXECUTIVE_OF"
+
+        relationships.append({
+            "source": name,
+            "target": company,
+            "relationship_type": rel_type,
+            "relationship_detail": position,
+            "extraction_method": "property_based"
+        })
+
+    # Extract from summary text
+    if summary:
+        # Look for CEO relationships
+        if "ceo" in summary.lower():
+            import re
+            # Pattern to find "CEO of [Company]"
+            ceo_pattern = r'(?:ceo|chief executive officer)\s+(?:of|at)\s+([^,.]+)'
+            matches = re.findall(ceo_pattern, summary.lower())
+            for match in matches:
+                company_name = match.strip()
+                if company_name and len(company_name) > 2:
+                    relationships.append({
+                        "source": name,
+                        "target": company_name.title(),
+                        "relationship_type": "CEO_OF",
+                        "relationship_detail": "CEO",
+                        "extraction_method": "summary_text"
+                    })
+
+        # Look for Chair relationships
+        if "chair" in summary.lower():
+            import re
+            chair_pattern = r'(?:chair|chairman)\s+(?:of|at)\s+([^,.]+)'
+            matches = re.findall(chair_pattern, summary.lower())
+            for match in matches:
+                company_name = match.strip()
+                if company_name and len(company_name) > 2:
+                    relationships.append({
+                        "source": name,
+                        "target": company_name.title(),
+                        "relationship_type": "CHAIRMAN_OF",
+                        "relationship_detail": "Chair",
+                        "extraction_method": "summary_text"
+                    })
+
+    return relationships
+
+
+async def _extract_graphiti_relationships(person_name: str) -> List[Dict[str, Any]]:
+    """
+    Extract additional relationships from Graphiti knowledge graph.
+
+    Args:
+        person_name: Name of the person
+
+    Returns:
+        List of relationships found in Graphiti
+    """
+    relationships = []
+
+    try:
+        # Search Graphiti for facts about this person
+        from .tools import graph_search_tool, GraphSearchInput
+
+        input_data = GraphSearchInput(query=person_name)
+        graphiti_results = await graph_search_tool(input_data)
+
+        for result in graphiti_results:
+            fact = result.fact.lower()
+
+            # Look for CEO relationships
+            if "chief executive officer" in fact or "ceo" in fact:
+                import re
+                # Pattern to find "CEO of [Company]" or "Chief Executive Officer of [Company]"
+                ceo_patterns = [
+                    r'(?:ceo|chief executive officer)\s+of\s+([^,.]+)',
+                    r'is\s+the\s+(?:ceo|chief executive officer)\s+of\s+([^,.]+)'
+                ]
+
+                for pattern in ceo_patterns:
+                    matches = re.findall(pattern, fact)
+                    for match in matches:
+                        company_name = match.strip()
+                        if company_name and len(company_name) > 2:
+                            relationships.append({
+                                "source": person_name,
+                                "target": company_name.title(),
+                                "relationship_type": "CEO_OF",
+                                "relationship_detail": "Chief Executive Officer",
+                                "extraction_method": "graphiti_fact"
+                            })
+
+            # Look for Chair relationships
+            if "chair" in fact:
+                import re
+                chair_patterns = [
+                    r'(?:chair|chairman)\s+of\s+([^,.]+)',
+                    r'is\s+the\s+(?:chair|chairman)\s+of\s+([^,.]+)'
+                ]
+
+                for pattern in chair_patterns:
+                    matches = re.findall(pattern, fact)
+                    for match in matches:
+                        company_name = match.strip()
+                        if company_name and len(company_name) > 2:
+                            relationships.append({
+                                "source": person_name,
+                                "target": company_name.title(),
+                                "relationship_type": "CHAIRMAN_OF",
+                                "relationship_detail": "Chair",
+                                "extraction_method": "graphiti_fact"
+                            })
+
+        # Remove duplicates based on relationship type and target
+        seen = set()
+        unique_relationships = []
+        for rel in relationships:
+            key = (rel["relationship_type"], rel["target"].lower())
+            if key not in seen:
+                seen.add(key)
+                unique_relationships.append(rel)
+
+        logger.info(f"Extracted {len(unique_relationships)} unique relationships from Graphiti for {person_name}")
+        return unique_relationships
+
+    except Exception as e:
+        logger.error(f"Failed to extract Graphiti relationships for {person_name}: {e}")
         return []
 
 

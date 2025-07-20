@@ -1704,7 +1704,7 @@ PEOPLE: Extract individual person names with enhanced context recognition.
 - Exclude: Company names, organization names, group entities
 - Separate person names from their titles/qualifications (extract "Michael Chen" not "Michael Chen, CEO")
 
-CRITICAL: Always extract person names even if they appear with roles or titles.
+CRITICAL: Always extract COMPLETE person names even if they appear with roles or titles.
 
 ENHANCED EXTRACTION PATTERNS:
 - Names in organizational hierarchies (Chair, Vice-Chair, members)
@@ -1714,10 +1714,19 @@ ENHANCED EXTRACTION PATTERNS:
 - Names in committee or council structures
 - Names with voting rights or representation (e.g., "France (1 vote)")
 
+TABLE FORMAT HANDLING:
+- When names appear in table format with first name and surname in separate columns, combine them
+- Example: If table shows "Shella" in one column and "S C Ng" in another, extract as "Shella S C Ng"
+- Example: If table shows "David" and "H Fan", extract as "David H Fan"
+- Example: If table shows "Gabriel" and "Leung", extract as "Gabriel Leung"
+- Look for patterns where first names and surnames are separated by table structure
+
 MANDATORY EXAMPLES TO EXTRACT:
 - "Winfried Engelbrecht Bresges" (from "Winfried Engelbrecht Bresges Chair")
 - "Henri Pouret" (from "Henri Pouret Vice-Chair, Europe") ← MUST EXTRACT THIS NAME
 - "Masayuki Goto" (from "Masayuki Goto Vice-Chair, Asia")
+- "Shella S C Ng" (from table with "Shella" and "S C Ng" in separate columns)
+- "David H Fan" (from table with "David" and "H Fan" in separate columns)
 - "Jim Gagliano" (from "Jim Gagliano Vice-Chair, Americas")
 - "Brant Dunshea" (from "Brant Dunshea British Horseracing Authority")
 - "Darragh O'Loughlin" (from "Darragh O'Loughlin Irish Horseracing Regulatory Board")

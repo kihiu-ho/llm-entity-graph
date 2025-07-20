@@ -19,6 +19,15 @@
 - [x] `web_ui/static/js/app.js` - JavaScript
 - [x] `requirements.txt` - Root dependencies
 
+### Neo4j NVL Library Setup ✅
+- [x] `web_ui/package.json` - Node.js dependencies including:
+  - [x] `@neo4j-nvl/base` - Core NVL library
+  - [x] `@neo4j-nvl/interaction-handlers` - DragNodeInteraction and other handlers
+- [x] `web_ui/webpack.config.js` - Webpack configuration for bundling
+- [x] `web_ui/src/nvl-bundle.js` - NVL bundle source with interaction handlers
+- [x] `web_ui/static/js/dist/nvl.bundle.js` - Built NVL bundle (auto-generated)
+- [x] `web_ui/static/js/neo4j-graph-visualization.js` - Graph visualization with DragNodeInteraction
+
 ## 🚀 Deployment Steps
 
 ### Step 1: Repository Setup
@@ -36,6 +45,12 @@
 - [ ] **Branch**: `main`
 - [ ] **Build Context**: `/` (root directory)
 - [ ] **Dockerfile**: `Dockerfile.claw`
+
+**Note**: The `Dockerfile.claw` includes:
+- ✅ Node.js installation for Neo4j NVL library
+- ✅ `npm install` to install `@neo4j-nvl/base` and `@neo4j-nvl/interaction-handlers`
+- ✅ `npm run build` to create the NVL bundle with DragNodeInteraction
+- ✅ Bundle verification to ensure proper build
 
 ### Step 4: Application Settings
 - [ ] **Application Name**: `agentic-rag-webui`

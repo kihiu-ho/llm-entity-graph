@@ -100,6 +100,11 @@ class Neo4jGraphVisualization {
         document.getElementById('refresh-graph').addEventListener('click', () => {
             this.refreshGraph();
         });
+
+        // Graph details button
+        document.getElementById('graph-details').addEventListener('click', () => {
+            this.showGraphDetailsModal();
+        });
         
         // Modal controls
         document.getElementById('close-graph-modal').addEventListener('click', () => {
@@ -2281,6 +2286,145 @@ class Neo4jGraphVisualization {
 
         // Load and render graph with query
         await this.loadAndRenderGraph('', depth, query);
+    }
+
+    // Show graph details modal
+    showGraphDetailsModal() {
+        const modal = document.getElementById('graph-details-modal');
+        modal.style.display = 'block';
+
+        // Set up form submission
+        const form = document.getElementById('graph-details-form');
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            await this.executeCustomQuery();
+        };
+    }
+
+    // Execute custom query from details modal
+    async executeCustomQuery() {
+        const entity = document.getElementById('detail-entity').value.trim();
+        const limit = parseInt(document.getElementById('detail-limit').value) || 50;
+        const depth = parseInt(document.getElementById('detail-depth').value) || 2;
+        const customQuery = document.getElementById('detail-query').value.trim();
+
+        const resultsDiv = document.getElementById('detail-results');
+        const graphContainer = document.getElementById('detail-graph-container');
+        const statsDiv = document.getElementById('detail-stats');
+
+        try {
+            resultsDiv.style.display = 'block';
+            graphContainer.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #666;"><i class="fas fa-spinner fa-spin" style="margin-right: 10px;"></i>Loading...</div>';
+
+            let graphData;
+
+            if (customQuery) {
+                // Execute custom Cypher query
+                const response = await fetch('/api/graph/neo4j/custom', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: customQuery,
+                        limit: limit
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                graphData = await response.json();
+            } else {
+                // Use standard visualization endpoint
+                graphData = await this.fetchGraphData(entity, limit);
+            }
+
+            // Display stats
+            statsDiv.innerHTML = `
+                <div><strong>Nodes:</strong> ${graphData.nodes?.length || 0}</div>
+                <div><strong>Relationships:</strong> ${graphData.relationships?.length || 0}</div>
+                <div><strong>Query Time:</strong> ${graphData.query_time || 'N/A'}</div>
+            `;
+
+            // Render graph in the detail container
+            this.renderDetailGraph(graphContainer, graphData);
+
+        } catch (error) {
+            console.error('Custom query failed:', error);
+            graphContainer.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #d32f2f;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 10px;"></i>
+                    <p>Query failed: ${error.message}</p>
+                </div>
+            `;
+        }
+    }
+
+    // Render graph in detail modal
+    renderDetailGraph(container, graphData) {
+        if (!graphData.nodes || graphData.nodes.length === 0) {
+            container.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #666;">
+                    <i class="fas fa-project-diagram" style="font-size: 2rem; margin-bottom: 10px;"></i>
+                    <p>No graph data to display</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Clear container
+        container.innerHTML = '';
+
+        // Create a unique container ID for this detail graph
+        const detailGraphId = 'detail-graph-' + Date.now();
+        container.innerHTML = `<div id="${detailGraphId}" style="width: 100%; height: 100%;"></div>`;
+
+        try {
+            // Use the same NVL rendering logic as the main graph
+            const detailContainer = document.getElementById(detailGraphId);
+
+            // Format data for NVL
+            const nodes = graphData.nodes.map(node => ({
+                id: node.id,
+                labels: node.labels || [],
+                properties: node.properties || {},
+                selected: false,
+                hovered: false
+            }));
+
+            const relationships = graphData.relationships.map(rel => ({
+                id: rel.id,
+                startNodeId: rel.startNodeId,
+                endNodeId: rel.endNodeId,
+                type: rel.type,
+                properties: rel.properties || {},
+                selected: false,
+                hovered: false
+            }));
+
+            // Create NVL instance for detail view
+            const detailNvl = new NVL(detailContainer, nodes, relationships, {
+                layout: 'forceDirected',
+                initialZoom: 0.8,
+                styling: {
+                    nodeDefaultBorderColor: '#ffffff',
+                    selectedBorderColor: '#4CAF50'
+                }
+            });
+
+            console.log('✅ Detail graph rendered successfully');
+
+        } catch (error) {
+            console.error('Failed to render detail graph:', error);
+            container.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #d32f2f;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 10px;"></i>
+                    <p>Failed to render graph: ${error.message}</p>
+                </div>
+            `;
+        }
     }
     
     exportGraph() {

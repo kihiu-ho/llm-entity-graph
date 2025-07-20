@@ -437,15 +437,20 @@ class DocumentIngestionPipeline:
     async def _clean_databases(self):
         """Clean existing data from databases."""
         logger.warning("Cleaning existing data from databases...")
-        
+
         # Clean PostgreSQL
+        db_pool = get_db_pool()
+        if db_pool is None:
+            logger.error("Database pool not initialized. Cannot clean PostgreSQL.")
+            return
+
         async with db_pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute("DELETE FROM messages")
                 await conn.execute("DELETE FROM sessions")
                 await conn.execute("DELETE FROM chunks")
                 await conn.execute("DELETE FROM documents")
-        
+
         logger.info("Cleaned PostgreSQL database")
         
         # Clean knowledge graph

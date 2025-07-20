@@ -43,6 +43,9 @@
                         <button id="refresh-graph" class="action-btn">
                             <i class="fas fa-sync"></i> Refresh
                         </button>
+                        <button id="graph-details" class="action-btn">
+                            <i class="fas fa-cog"></i> Details
+                        </button>
                     </div>
                 </div>
 
@@ -394,6 +397,49 @@
     <!-- Toast Notifications -->
     <div id="toast-container" class="toast-container"></div>
 
+    <!-- Graph Details Modal -->
+    <div id="graph-details-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-cog"></i> Neo4j Graph Query Details</h3>
+                <span class="close" onclick="document.getElementById('graph-details-modal').style.display='none'">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="graph-details-form">
+                    <div class="form-group">
+                        <label for="detail-entity">Entity Name:</label>
+                        <input type="text" id="detail-entity" placeholder="Enter entity name (optional)">
+                    </div>
+                    <div class="form-group">
+                        <label for="detail-limit">Limit:</label>
+                        <input type="number" id="detail-limit" value="50" min="10" max="200">
+                    </div>
+                    <div class="form-group">
+                        <label for="detail-depth">Depth:</label>
+                        <input type="number" id="detail-depth" value="2" min="1" max="5">
+                    </div>
+                    <div class="form-group">
+                        <label for="detail-query">Custom Query:</label>
+                        <textarea id="detail-query" placeholder="Enter custom Cypher query (optional)" rows="4"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="action-btn">
+                            <i class="fas fa-search"></i> Execute Query
+                        </button>
+                        <button type="button" class="action-btn secondary" onclick="document.getElementById('graph-details-modal').style.display='none'">
+                            <i class="fas fa-times"></i> Cancel
+                        </button>
+                    </div>
+                </form>
+                <div id="detail-results" class="detail-results" style="display: none;">
+                    <h4>Query Results:</h4>
+                    <div id="detail-graph-container" class="detail-graph-container"></div>
+                    <div id="detail-stats" class="detail-stats"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Neo4j Visualization Library (NVL) - Bundled Version -->
     <script src="{{ url_for('static', filename='js/dist/nvl.bundle.js') }}"
             onload="console.log('✅ Neo4j NVL bundle loaded successfully')"
@@ -405,6 +451,7 @@
             onerror="console.warn('⚠️ Failed to load D3.js')"></script>
 
     <script src="{{ url_for('static', filename='js/neo4j-graph-visualization.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/chat-graph-visualization.js') }}"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

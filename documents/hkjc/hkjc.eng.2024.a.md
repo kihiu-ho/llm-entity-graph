@@ -1406,7 +1406,7 @@ Sun, 10 December
 
 Group Races - Highlights
 
-
+ 
  LONGINES Hong Kong Cup
 
 

@@ -37,6 +37,7 @@ from .tools import (
     CompanySearchInput,
     EntityRelationshipSearchInput
 )
+from .graph_utils import search_people
 
 # Load environment variables
 load_dotenv()
@@ -115,68 +116,354 @@ async def graph_search(
     query: str
 ) -> List[Dict[str, Any]]:
     """
-    Search the knowledge graph for facts and relationships.
+    Intelligent search that uses LLM to determine search strategy and extract entities.
 
-    This tool queries the knowledge graph to find specific facts, relationships
-    between entities, and temporal information. Best for finding specific facts,
-    relationships between companies/people/technologies, and time-based information.
-    Enhanced to extract relationships from facts automatically.
+    This tool analyzes the query using an LLM to:
+    1. Extract relevant entities from the query
+    2. Determine whether to use 'graph' or 'vector' search
+    3. Execute the appropriate search strategy
+
+    For graph search, it queries using Graphiti to find facts and relationships.
+    For vector search, it performs semantic similarity search.
 
     Args:
-        query: Search query to find facts and relationships
+        query: Natural language query to analyze and search
 
     Returns:
-        List of facts with associated episodes, temporal data, and extracted relationships
+        List of relevant results based on the determined search strategy
     """
-    # Check if this is a relationship query between two entities
-    if _is_relationship_query(query):
-        entities = _extract_entities_from_relationship_query(query)
-        if len(entities) >= 2:
-            # Use specialized relationship search
-            return await _search_entity_relationships(entities[0], entities[1])
+    try:
+        logger.info(f"🤖 Analyzing query with LLM: {query}")
 
-    input_data = GraphSearchInput(query=query)
-    results = await graph_search_tool(input_data)
+        # Check if this is a "who is" query for enhanced person search
+        if query.lower().startswith("who is"):
+            person_name = query[6:].strip().strip('"\'')
+            logger.info(f"🎯 Detected 'who is' query for: {person_name}")
 
-    # Convert results to dict for agent with enhanced relationship extraction
-    enhanced_results = []
-    for r in results:
-        result_dict = {
-            "fact": r.fact,
-            "uuid": r.uuid,
-            "valid_at": r.valid_at,
-            "invalid_at": r.invalid_at,
-            "source_node_uuid": r.source_node_uuid
-        }
+            # Use enhanced person search
+            person_results = await search_people(name_query=person_name, limit=5)
 
-        # Try to extract relationships from the fact using the improved extraction
+            if person_results:
+                # Convert person results to graph search format
+                enhanced_results = []
+                for person in person_results:
+                    # Create a comprehensive fact about the person
+                    fact_parts = [f"{person.get('name', 'Unknown')} is a person"]
+
+                    if person.get('position'):
+                        fact_parts.append(f"with position {person['position']}")
+
+                    if person.get('company'):
+                        fact_parts.append(f"at {person['company']}")
+
+                    if person.get('summary'):
+                        summary = person['summary'][:200] + "..." if len(person['summary']) > 200 else person['summary']
+                        fact_parts.append(f"Summary: {summary}")
+
+                    # Add relationship information
+                    if person.get('relationships'):
+                        rel_info = []
+                        for rel in person['relationships']:
+                            rel_info.append(f"{rel['relationship_type']} {rel['target']}")
+                        if rel_info:
+                            fact_parts.append(f"Relationships: {', '.join(rel_info)}")
+
+                    fact = ". ".join(fact_parts)
+
+                    enhanced_results.append({
+                        "fact": fact,
+                        "uuid": person.get('uuid', ''),
+                        "valid_at": None,
+                        "invalid_at": None,
+                        "source_node_uuid": person.get('uuid', ''),
+                        "search_method": "enhanced_person_search",
+                        "person_data": person
+                    })
+
+                logger.info(f"✅ Enhanced person search found {len(enhanced_results)} results")
+                return enhanced_results
+
+        # Step 1: Use LLM to analyze query and determine search strategy
+        search_analysis = await _analyze_query_with_llm(query)
+
+        logger.info(f"🎯 LLM Analysis - Search Type: {search_analysis['search_type']}, Entities: {search_analysis['entities']}")
+
+        # Step 2: Execute the appropriate search based on LLM analysis
+        if search_analysis["search_type"] == "graph":
+            return await _execute_graph_search(query, search_analysis["entities"])
+        else:
+            return await _execute_vector_search(query, search_analysis)
+
+    except Exception as e:
+        logger.error(f"LLM-powered search failed: {e}")
+        # Fallback to basic Graphiti search
+        logger.info("🔄 Falling back to basic Graphiti search")
+        input_data = GraphSearchInput(query=query)
+        results = await graph_search_tool(input_data)
+
+        return [
+            {
+                "fact": r.fact,
+                "uuid": r.uuid,
+                "valid_at": r.valid_at.isoformat() if r.valid_at else None,
+                "invalid_at": r.invalid_at.isoformat() if r.invalid_at else None,
+                "source_node_uuid": r.source_node_uuid,
+                "search_method": "fallback_graphiti"
+            }
+            for r in results
+        ]
+
+
+async def _analyze_query_with_llm(query: str) -> Dict[str, Any]:
+    """
+    Use LLM to analyze the query and determine search strategy.
+
+    Args:
+        query: User's natural language query
+
+    Returns:
+        Dictionary with search_type ('graph' or 'vector') and extracted entities
+    """
+    from .providers import get_llm_model
+    import json
+
+    # Create a focused prompt for query analysis
+    analysis_prompt = f"""
+Analyze this query and determine the best search strategy:
+
+Query: "{query}"
+
+You must respond with a JSON object containing:
+1. "search_type": either "graph" or "vector"
+2. "entities": list of entity names mentioned in the query
+3. "reasoning": brief explanation of your decision
+
+Guidelines:
+- Use "graph" for queries about:
+  * Relationships between specific people/companies/organizations
+  * Connections, associations, partnerships
+  * Who works where, who is connected to whom
+  * Specific facts about named entities
+  * Questions with proper nouns (names of people, companies, places)
+
+- Use "vector" for queries about:
+  * General concepts, topics, or themes
+  * Abstract questions without specific entity names
+  * Broad informational requests
+  * Questions about processes, methods, or general knowledge
+
+Examples:
+- "What is the relationship between John Smith and Microsoft?" → graph (entities: ["John Smith", "Microsoft"])
+- "How does machine learning work?" → vector (entities: [])
+- "Tell me about Winfried Engelbrecht Bresges and HKJC" → graph (entities: ["Winfried Engelbrecht Bresges", "HKJC"])
+- "What are the benefits of renewable energy?" → vector (entities: [])
+
+Respond only with valid JSON:
+"""
+
+    try:
+        # Get LLM model
+        model = get_llm_model()
+
+        # Make the LLM call
+        response = await model.request(analysis_prompt)
+
+        # Parse the JSON response
         try:
-            # Import the enhanced extraction function that matches ingestion format
-            from .tools import _extract_relationships_from_graphiti_fact
+            analysis = json.loads(response.content)
 
-            # Extract any relationships mentioned in this fact
-            relationships = _extract_relationships_from_graphiti_fact(r.fact, "", r.uuid)
-            if relationships:
-                result_dict["extracted_relationships"] = relationships
-                result_dict["relationship_count"] = len(relationships)
+            # Validate the response structure
+            if "search_type" not in analysis or "entities" not in analysis:
+                raise ValueError("Invalid response structure")
 
-                # Add a summary of relationship types found
-                rel_types = list(set(rel.get("relationship_type", "Unknown") for rel in relationships))
-                result_dict["relationship_types_found"] = rel_types
-            else:
-                result_dict["extracted_relationships"] = []
-                result_dict["relationship_count"] = 0
-                result_dict["relationship_types_found"] = []
+            if analysis["search_type"] not in ["graph", "vector"]:
+                raise ValueError("Invalid search_type")
 
-        except Exception as e:
-            logger.warning(f"Failed to extract relationships from fact: {e}")
-            result_dict["extracted_relationships"] = []
-            result_dict["relationship_count"] = 0
-            result_dict["relationship_types_found"] = []
+            # Normalize entities
+            entities = [entity.strip() for entity in analysis["entities"] if entity.strip()]
 
-        enhanced_results.append(result_dict)
+            return {
+                "search_type": analysis["search_type"],
+                "entities": entities,
+                "reasoning": analysis.get("reasoning", ""),
+                "llm_analysis": True
+            }
 
-    return enhanced_results
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning(f"Failed to parse LLM response: {e}")
+            # Fallback to heuristic analysis
+            return _fallback_query_analysis(query)
+
+    except Exception as e:
+        logger.error(f"LLM analysis failed: {e}")
+        # Fallback to heuristic analysis
+        return _fallback_query_analysis(query)
+
+
+def _fallback_query_analysis(query: str) -> Dict[str, Any]:
+    """
+    Fallback heuristic analysis when LLM fails.
+
+    Args:
+        query: User's query
+
+    Returns:
+        Dictionary with search strategy and entities
+    """
+    import re
+
+    query_lower = query.lower()
+
+    # Heuristic indicators for graph search
+    graph_indicators = [
+        "relationship", "relation", "connection", "connected", "associated",
+        "works at", "works for", "employed by", "ceo of", "director of",
+        "between", "and", "partnership", "collaboration", "member of"
+    ]
+
+    # Check for proper nouns (likely entity names)
+    proper_nouns = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', query)
+
+    # Check for quoted entities
+    quoted_entities = re.findall(r'["\']([^"\']+)["\']', query)
+
+    # Combine entities
+    entities = list(set(proper_nouns + quoted_entities))
+
+    # Determine search type
+    has_graph_indicators = any(indicator in query_lower for indicator in graph_indicators)
+    has_entities = len(entities) > 0
+
+    if has_graph_indicators or (has_entities and len(entities) >= 1):
+        search_type = "graph"
+    else:
+        search_type = "vector"
+
+    return {
+        "search_type": search_type,
+        "entities": entities,
+        "reasoning": f"Heuristic analysis: {'graph indicators found' if has_graph_indicators else 'entities detected' if has_entities else 'no specific entities'}",
+        "llm_analysis": False
+    }
+
+
+async def _execute_graph_search(query: str, entities: List[str]) -> List[Dict[str, Any]]:
+    """
+    Execute graph search using Graphiti with extracted entities.
+
+    Args:
+        query: Original query
+        entities: List of entities extracted by LLM
+
+    Returns:
+        List of graph search results
+    """
+    try:
+        logger.info(f"🔍 Executing Graphiti search for entities: {entities}")
+
+        # Use Graphiti for graph search
+        input_data = GraphSearchInput(query=query)
+        results = await graph_search_tool(input_data)
+
+        # Enhanced results with entity context
+        enhanced_results = []
+        for r in results:
+            result_dict = {
+                "fact": r.fact,
+                "uuid": r.uuid,
+                "valid_at": r.valid_at.isoformat() if r.valid_at else None,
+                "invalid_at": r.invalid_at.isoformat() if r.invalid_at else None,
+                "source_node_uuid": r.source_node_uuid,
+                "search_method": "llm_guided_graphiti",
+                "target_entities": entities,
+                "entity_relevance": _calculate_entity_relevance(r.fact, entities)
+            }
+            enhanced_results.append(result_dict)
+
+        # Sort by entity relevance
+        enhanced_results.sort(key=lambda x: x["entity_relevance"], reverse=True)
+
+        logger.info(f"✅ Graphiti search returned {len(enhanced_results)} results")
+        return enhanced_results
+
+    except Exception as e:
+        logger.error(f"Graphiti search execution failed: {e}")
+        return []
+
+
+async def _execute_vector_search(query: str, search_analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Execute vector search for conceptual/thematic queries.
+
+    Args:
+        query: Original query
+        search_analysis: Analysis results from LLM
+
+    Returns:
+        List of vector search results
+    """
+    try:
+        logger.info(f"🔍 Executing vector search for conceptual query")
+
+        # Use vector search tool
+        input_data = VectorSearchInput(query=query, limit=10)
+        results = await vector_search_tool(input_data)
+
+        # Convert to consistent format
+        vector_results = []
+        for r in results:
+            result_dict = {
+                "fact": r.get("content", ""),
+                "uuid": r.get("id", ""),
+                "valid_at": None,
+                "invalid_at": None,
+                "source_node_uuid": None,
+                "search_method": "llm_guided_vector",
+                "similarity_score": r.get("similarity", 0.0),
+                "source_document": r.get("source", ""),
+                "reasoning": search_analysis.get("reasoning", "")
+            }
+            vector_results.append(result_dict)
+
+        logger.info(f"✅ Vector search returned {len(vector_results)} results")
+        return vector_results
+
+    except Exception as e:
+        logger.error(f"Vector search execution failed: {e}")
+        return []
+
+
+def _calculate_entity_relevance(fact: str, entities: List[str]) -> float:
+    """
+    Calculate how relevant a fact is to the target entities.
+
+    Args:
+        fact: The fact text
+        entities: List of target entities
+
+    Returns:
+        Relevance score between 0 and 1
+    """
+    if not entities:
+        return 0.5  # Neutral relevance if no entities
+
+    fact_lower = fact.lower()
+    relevance_score = 0.0
+
+    for entity in entities:
+        entity_lower = entity.lower()
+        if entity_lower in fact_lower:
+            # Exact match gets high score
+            relevance_score += 1.0
+        else:
+            # Check for partial matches (words from entity name)
+            entity_words = entity_lower.split()
+            word_matches = sum(1 for word in entity_words if word in fact_lower)
+            if word_matches > 0:
+                relevance_score += word_matches / len(entity_words) * 0.7
+
+    # Normalize by number of entities
+    return min(relevance_score / len(entities), 1.0)
 
 
 @rag_agent.tool
@@ -334,7 +621,7 @@ async def comprehensive_search(
     }
 
     try:
-        # Determine search strategy
+        # Determine search strategy for
         if search_type == "auto":
             search_type = _determine_optimal_search_strategy(query)
 
@@ -854,14 +1141,53 @@ async def find_entity_connections(
     """
     logger.info(f"🔍 Finding entity connections for query: {query}")
 
-    # Extract entities from the query
-    entities = _extract_entities_from_relationship_query(query)
-    logger.info(f"📋 Extracted entities: {entities}")
+    # Use new LLM-powered entity extraction
+    entities = await _extract_entities_from_relationship_query(query)
+    logger.info(f"📋 LLM extracted entities: {entities}")
 
     if not entities:
         logger.warning("⚠️ No entities found in relationship query")
         return []
 
+    # Use enhanced graph search for all entity combinations
+    if len(entities) >= 2:
+        entity1, entity2 = entities[0], entities[1]
+        logger.info(f"🚀 Using LLM-guided search for '{entity1}' and '{entity2}'")
+
+        try:
+            # Use new LLM-guided relationship search
+            relationship_results = await _search_entity_relationships(entity1, entity2)
+
+            # Convert to expected format for compatibility
+            enhanced_relationships = []
+            for result in relationship_results:
+                enhanced_rel = {
+                    "source_entity": entity1,
+                    "target_entity": entity2,
+                    "relationship_type": result.get("relationship_type", "RELATED_TO"),
+                    "relationship_description": result.get("fact", ""),
+                    "query_entity": f"{entity1} and {entity2}",
+                    "confidence_score": result.get("relevance_score", 0.8),
+                    "source_document": "LLM-Guided Graphiti Search",
+                    "fact": f"{rel.get('source', {}).get('name', 'Unknown')} {rel.get('relationship_type', 'UNKNOWN')} {rel.get('target', {}).get('name', 'Unknown')}",
+                    "extraction_method": rel.get("extraction_method", "enhanced_search"),
+                    "source_details": rel.get("source", {}),
+                    "target_details": rel.get("target", {})
+                }
+                enhanced_relationships.append(enhanced_rel)
+                logger.info(f"✅ Enhanced search found: {enhanced_rel['source_entity']} -> {enhanced_rel['relationship_type']} -> {enhanced_rel['target_entity']}")
+
+            # If enhanced search found relationships, return them
+            if enhanced_relationships:
+                logger.info(f"🎯 Enhanced search found {len(enhanced_relationships)} relationships")
+                return enhanced_relationships
+            else:
+                logger.info("🔄 Enhanced search found no relationships, falling back to standard search")
+
+        except Exception as e:
+            logger.warning(f"⚠️ Enhanced search failed, falling back to standard search: {e}")
+
+    # Fallback to standard relationship search
     all_relationships = []
 
     # Get relationships for each entity
@@ -894,68 +1220,136 @@ async def find_entity_connections(
     return all_relationships
 
 
-# Helper functions for relationship search
+# New LLM-powered helper functions
 
-def _is_relationship_query(query: str) -> bool:
-    """Check if query is asking about relationships between entities."""
-    relationship_indicators = [
-        "relation between", "relationship between", "connection between",
-        "how is", "connected to", "related to", "works with",
-        "associated with", "link between", "ties between"
-    ]
-    query_lower = query.lower()
-    return any(indicator in query_lower for indicator in relationship_indicators)
-
-
-def _extract_entities_from_relationship_query(query: str) -> List[str]:
-    """Extract entity names from a relationship query."""
-    import re
-
-    # Common patterns for relationship queries
-    patterns = [
-        r"relation(?:ship)?\s+between\s+(.+?)\s+and\s+(.+?)(?:\s|$|\?)",
-        r"connection\s+between\s+(.+?)\s+and\s+(.+?)(?:\s|$|\?)",
-        r"how\s+is\s+(.+?)\s+(?:related\s+to|connected\s+to)\s+(.+?)(?:\s|$|\?)",
-        r"(.+?)\s+(?:related\s+to|connected\s+to|works\s+with)\s+(.+?)(?:\s|$|\?)"
-    ]
-
-    query_lower = query.lower().strip()
-
-    for pattern in patterns:
-        match = re.search(pattern, query_lower)
-        if match:
-            entity1 = match.group(1).strip()
-            entity2 = match.group(2).strip()
-
-            # Clean up entity names
-            entity1 = _clean_entity_name(entity1)
-            entity2 = _clean_entity_name(entity2)
-
-            return [entity1, entity2]
-
-    return []
+async def _is_relationship_query(query: str) -> bool:
+    """
+    Use LLM to determine if query is asking about relationships between entities.
+    This replaces the old rule-based approach with intelligent analysis.
+    """
+    try:
+        analysis = await _analyze_query_with_llm(query)
+        return analysis["search_type"] == "graph" and len(analysis["entities"]) >= 2
+    except Exception:
+        # Fallback to simple heuristic
+        relationship_indicators = [
+            "relation", "relationship", "connection", "between",
+            "connected", "related", "works with", "associated"
+        ]
+        query_lower = query.lower()
+        return any(indicator in query_lower for indicator in relationship_indicators)
 
 
-def _clean_entity_name(name: str) -> str:
-    """Clean and normalize entity names."""
-    # Remove common words and punctuation
-    name = name.strip()
+async def _extract_entities_from_relationship_query(query: str) -> List[str]:
+    """
+    Use LLM to extract entity names from any query.
+    This replaces the old regex-based approach with intelligent extraction.
+    """
+    try:
+        analysis = await _analyze_query_with_llm(query)
+        return analysis["entities"]
+    except Exception:
+        # Fallback to simple regex extraction
+        import re
+        patterns = [
+            r"relation(?:ship)?\s+between\s+(.+?)\s+and\s+(.+?)(?:\s|$|\?)",
+            r"connection\s+between\s+(.+?)\s+and\s+(.+?)(?:\s|$|\?)",
+            r"how\s+is\s+(.+?)\s+(?:related\s+to|connected\s+to)\s+(.+?)(?:\s|$|\?)"
+        ]
 
-    # Remove question marks and other punctuation
-    name = re.sub(r'[?!.,;]', '', name)
+        query_lower = query.lower().strip()
+        for pattern in patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                return [match.group(1).strip(), match.group(2).strip()]
+        return []
 
-    # Handle common abbreviations and variations
-    name_mapping = {
-        "hkjc": "Hong Kong Jockey Club",
-        "hong kong jockey club": "Hong Kong Jockey Club",
-        "the hong kong jockey club": "Hong Kong Jockey Club"
-    }
 
-    name_lower = name.lower()
-    if name_lower in name_mapping:
-        return name_mapping[name_lower]
+async def _search_entity_relationships(entity1: str, entity2: str) -> List[Dict[str, Any]]:
+    """
+    Enhanced relationship search using LLM-guided Graphiti queries.
+    This replaces the old manual relationship search with intelligent querying.
+    """
+    try:
+        logger.info(f"🔍 LLM-guided relationship search: {entity1} <-> {entity2}")
 
-    return name.title()  # Capitalize properly
+        # Create a focused relationship query
+        relationship_query = f"relationship between {entity1} and {entity2}"
+
+        # Use Graphiti to find relationships
+        input_data = GraphSearchInput(query=relationship_query)
+        results = await graph_search_tool(input_data)
+
+        # Enhanced processing of results
+        relationship_results = []
+        for r in results:
+            # Calculate relevance to both entities
+            relevance = _calculate_entity_relevance(r.fact, [entity1, entity2])
+
+            result_dict = {
+                "fact": r.fact,
+                "uuid": r.uuid,
+                "valid_at": r.valid_at.isoformat() if r.valid_at else None,
+                "invalid_at": r.invalid_at.isoformat() if r.invalid_at else None,
+                "source_node_uuid": r.source_node_uuid,
+                "search_method": "llm_guided_relationship",
+                "entity1": entity1,
+                "entity2": entity2,
+                "relevance_score": relevance,
+                "relationship_type": "RELATED_TO"  # Default, could be enhanced with LLM
+            }
+            relationship_results.append(result_dict)
+
+        # Sort by relevance
+        relationship_results.sort(key=lambda x: x["relevance_score"], reverse=True)
+
+        logger.info(f"✅ Found {len(relationship_results)} relationship facts")
+        return relationship_results
+
+    except Exception as e:
+        logger.error(f"LLM-guided relationship search failed: {e}")
+        return []
+
+
+async def enhanced_graph_search(query: str, entities: List[str] = None) -> List[Dict[str, Any]]:
+    """
+    Enhanced graph search that combines LLM analysis with Graphiti querying.
+    This is the new main entry point for intelligent graph search.
+    """
+    try:
+        logger.info(f"🚀 Enhanced graph search: {query}")
+
+        # If entities not provided, extract them using LLM
+        if not entities:
+            analysis = await _analyze_query_with_llm(query)
+            entities = analysis["entities"]
+            search_type = analysis["search_type"]
+        else:
+            search_type = "graph"  # Assume graph search if entities provided
+
+        # Execute appropriate search strategy
+        if search_type == "graph":
+            return await _execute_graph_search(query, entities)
+        else:
+            return await _execute_vector_search(query, {"entities": entities})
+
+    except Exception as e:
+        logger.error(f"Enhanced graph search failed: {e}")
+        # Fallback to basic Graphiti
+        input_data = GraphSearchInput(query=query)
+        results = await graph_search_tool(input_data)
+
+        return [
+            {
+                "fact": r.fact,
+                "uuid": r.uuid,
+                "valid_at": r.valid_at.isoformat() if r.valid_at else None,
+                "invalid_at": r.invalid_at.isoformat() if r.invalid_at else None,
+                "source_node_uuid": r.source_node_uuid,
+                "search_method": "fallback_graphiti"
+            }
+            for r in results
+        ]
 
 
 async def _search_entity_relationships(entity1: str, entity2: str) -> List[Dict[str, Any]]:

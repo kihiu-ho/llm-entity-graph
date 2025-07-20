@@ -22,6 +22,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     curl \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Platform-specific pip optimizations
@@ -46,6 +48,13 @@ RUN pip install --no-cache-dir -r web_ui/requirements.txt
 
 # Copy application code
 COPY . .
+
+# Build Neo4j NVL bundle for web UI
+WORKDIR /app/web_ui
+RUN npm install && npm run build
+
+# Return to app directory
+WORKDIR /app
 
 # Create non-root user for security (platform-agnostic)
 RUN useradd --create-home --shell /bin/bash --uid 1000 app && \

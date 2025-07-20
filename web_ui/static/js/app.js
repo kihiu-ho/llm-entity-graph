@@ -207,7 +207,10 @@ class AgenticRAGUI {
     
     async streamChat(message) {
         try {
-            const response = await fetch('/chat', {
+            // Use the direct endpoint for better reliability
+            console.log('🎯 Using direct chat endpoint');
+
+            const response = await fetch('/chat/direct', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -218,7 +221,7 @@ class AgenticRAGUI {
                     user_id: this.userId
                 })
             });
-            
+
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -246,12 +249,24 @@ class AgenticRAGUI {
                                 case 'session':
                                     this.sessionId = data.session_id;
                                     break;
-                                    
+
                                 case 'text':
                                     fullResponse += data.content;
                                     this.updateMessage(assistantMessage, fullResponse);
                                     break;
-                                    
+
+                                case 'content':
+                                    // Handle content with potential graph data
+                                    fullResponse = data.content;
+                                    this.updateMessage(assistantMessage, fullResponse);
+
+                                    // Check for graph data and add visualization
+                                    if (data.graph_data) {
+                                        console.log('🎯 Received graph data with content:', data.graph_data);
+                                        this.addGraphToMessage(assistantMessage, data.graph_data);
+                                    }
+                                    break;
+
                                 case 'tools':
                                     toolsUsed = data.tools;
                                     break;
@@ -259,6 +274,15 @@ class AgenticRAGUI {
                                 case 'graph_visualization':
                                     console.log('Received graph visualization data:', data.data);
                                     this.handleGraphVisualization(assistantMessage, data.data);
+                                    break;
+
+                                case 'typing':
+                                    // Show typing indicator content
+                                    console.log('🤖 Assistant is typing:', data.content);
+                                    break;
+
+                                case 'user_message':
+                                    // User message echo (can be ignored as we already added it)
                                     break;
 
                                 case 'end':
@@ -269,7 +293,7 @@ class AgenticRAGUI {
                                     // Check if this is a relationship query that should trigger graph visualization
                                     this.checkForGraphVisualization(message, fullResponse);
                                     return;
-                                    
+
                                 case 'error':
                                     this.updateMessage(assistantMessage, `Error: ${data.content}`);
                                     this.showToast('error', 'An error occurred while processing your message');
@@ -291,33 +315,42 @@ class AgenticRAGUI {
     addMessage(role, content) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${role}`;
-        
+
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
-        
+
         if (role === 'assistant') {
             const headerDiv = document.createElement('div');
             headerDiv.className = 'message-header';
             headerDiv.innerHTML = '<i class="fas fa-robot"></i> Assistant';
             contentDiv.appendChild(headerDiv);
         }
-        
+
+        // Parse content to check for graph data
+        const parsedContent = this.parseResponseContent(content);
+
         const textDiv = document.createElement('div');
         textDiv.className = 'message-text';
-        textDiv.textContent = content;
+        textDiv.textContent = parsedContent.text;
         contentDiv.appendChild(textDiv);
-        
+
         messageDiv.appendChild(contentDiv);
-        
+
         // Remove welcome message if it exists
         const welcomeMessage = this.chatMessages.querySelector('.welcome-message');
         if (welcomeMessage) {
             welcomeMessage.remove();
         }
-        
+
         this.chatMessages.appendChild(messageDiv);
+
+        // Add graph visualization if graph data is present
+        if (parsedContent.graphData) {
+            this.addGraphToMessage(messageDiv, parsedContent.graphData);
+        }
+
         this.scrollToBottom();
-        
+
         return messageDiv;
     }
     
@@ -327,6 +360,71 @@ class AgenticRAGUI {
             textDiv.textContent = content;
             this.scrollToBottom();
         }
+    }
+
+    /**
+     * Add graph visualization to a message if graph data is present
+     * @param {HTMLElement} messageElement - The message element
+     * @param {Object} graphData - Graph data with nodes and relationships
+     */
+    addGraphToMessage(messageElement, graphData) {
+        try {
+            if (!graphData || (!graphData.nodes && !graphData.relationships)) {
+                console.log('🎯 No graph data to display');
+                return;
+            }
+
+            console.log('🎯 Adding graph to message:', graphData);
+
+            // Generate unique message ID
+            const messageId = `chat-graph-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+            // Use the chat graph visualization component
+            if (window.chatGraphViz) {
+                window.chatGraphViz.createInlineGraph(messageElement, graphData, messageId);
+            } else {
+                console.warn('⚠️ Chat graph visualization component not available');
+            }
+
+        } catch (error) {
+            console.error('❌ Failed to add graph to message:', error);
+        }
+    }
+
+    /**
+     * Parse response content to extract graph data
+     * @param {string} content - Response content
+     * @returns {Object} Parsed content with graph data
+     */
+    parseResponseContent(content) {
+        try {
+            // Try to parse as JSON to check for graph data
+            const parsed = JSON.parse(content);
+            if (parsed.graph_data || parsed.nodes || parsed.relationships) {
+                return {
+                    text: parsed.text || parsed.message || '',
+                    graphData: parsed.graph_data || { nodes: parsed.nodes, relationships: parsed.relationships }
+                };
+            }
+        } catch (e) {
+            // Not JSON, check for graph data markers
+            const graphDataMatch = content.match(/\[GRAPH_DATA\](.*?)\[\/GRAPH_DATA\]/s);
+            if (graphDataMatch) {
+                try {
+                    const graphData = JSON.parse(graphDataMatch[1]);
+                    const textContent = content.replace(/\[GRAPH_DATA\].*?\[\/GRAPH_DATA\]/s, '').trim();
+                    return {
+                        text: textContent,
+                        graphData: graphData
+                    };
+                } catch (parseError) {
+                    console.warn('⚠️ Failed to parse graph data:', parseError);
+                }
+            }
+        }
+
+        // No graph data found, return as text
+        return { text: content, graphData: null };
     }
     
     scrollToBottom() {
@@ -858,22 +956,26 @@ class AgenticRAGUI {
         const resultsContainer = document.getElementById('ingestion-results');
         const resultsContent = document.getElementById('results-content');
 
-        resultsContent.innerHTML = results.map(result => `
+        // Handle the actual data structure from the server
+        console.log('📊 Ingestion results received:', results);
+
+        // The results object contains the ingestion summary
+        resultsContent.innerHTML = `
             <div class="result-item">
-                <h6>${result.title}</h6>
+                <h6>📁 Ingestion Summary</h6>
                 <div class="result-stats">
-                    <span class="status-success">✓ ${result.chunks_created} chunks</span>
-                    <span class="status-success">✓ ${result.entities_extracted} entities</span>
-                    <span class="status-success">✓ ${result.relationships_created} relationships</span>
-                    <span>⏱ ${result.processing_time_ms}ms</span>
+                    <span class="status-success">✓ ${results.files_processed} files processed</span>
+                    <span class="status-success">✓ ${results.total_chunks} chunks created</span>
+                    <span class="status-success">✓ ${results.total_entities} entities extracted</span>
+                    <span>⏱ ${results.processing_time}</span>
                 </div>
-                ${result.errors.length > 0 ? `
-                    <div class="result-errors">
-                        ${result.errors.map(error => `<div class="status-error">⚠ ${error}</div>`).join('')}
-                    </div>
-                ` : ''}
+                <div class="result-details">
+                    <div><strong>Mode:</strong> ${results.mode}</div>
+                    <div><strong>Chunk Size:</strong> ${results.chunk_size}</div>
+                    <div><strong>Files:</strong> ${results.file_names.join(', ')}</div>
+                </div>
             </div>
-        `).join('');
+        `;
 
         resultsContainer.style.display = 'block';
     }

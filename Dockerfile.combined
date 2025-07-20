@@ -1,0 +1,71 @@
+# Combined Dockerfile for API + Web UI with Neo4j NVL library
+# Optimized for Claw Cloud deployment
+
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies including Node.js for Neo4j NVL
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    procps \
+    lsof \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip and install build tools
+RUN pip install --upgrade pip setuptools wheel
+
+# Copy requirements files first for better caching
+COPY requirements.txt .
+COPY web_ui/requirements.txt web_ui/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r web_ui/requirements.txt
+
+# Copy application code
+COPY . .
+
+# Build Neo4j NVL bundle for web UI
+WORKDIR /app/web_ui
+RUN npm install && npm run build
+
+# Verify the bundle was created
+RUN ls -la static/js/dist/ && \
+    echo "Neo4j NVL bundle size:" && \
+    du -h static/js/dist/nvl.bundle.js
+
+# Return to app directory
+WORKDIR /app
+
+# Fix line endings and ensure startup script exists and is executable
+RUN sed -i 's/\r$//' /app/start.sh && \
+    chmod +x /app/start.sh
+
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash --uid 1000 app && \
+    chown -R app:app /app
+
+# Switch to non-root user
+USER app
+
+# Expose ports
+EXPOSE 5000 8058
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
+
+# Environment variables for production
+ENV FLASK_ENV=production
+ENV PYTHONUNBUFFERED=1
+ENV APP_ENV=production
+ENV LOG_LEVEL=INFO
+
+# Start both API and Web UI
+CMD ["/bin/bash", "/app/start.sh"]

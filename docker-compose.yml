@@ -5,7 +5,7 @@ services:
   agentic-rag-combined:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.combined
       platforms:
         - linux/amd64   # Intel/AMD x86_64
         - linux/arm64   # Apple Silicon, ARM servers
