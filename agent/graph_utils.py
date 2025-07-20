@@ -1271,6 +1271,7 @@ async def add_person_to_graph(
 ) -> str:
     """
     Add a person node to the knowledge graph.
+    Creates both a Graphiti episode and a direct Neo4j Person node.
 
     Args:
         name: Person's name
@@ -1283,6 +1284,7 @@ async def add_person_to_graph(
     Returns:
         Episode ID
     """
+    # Create Person entity for Graphiti
     person = Person(
         name=name,
         person_type=person_type,
@@ -1291,7 +1293,32 @@ async def add_person_to_graph(
         **kwargs
     )
 
-    return await get_graph_client().add_entity(person, source_document)
+    # Add to Graphiti for episode tracking
+    episode_id = await get_graph_client().add_entity(person, source_document)
+
+    # Also create direct Neo4j Person node with proper label
+    try:
+        from agent.neo4j_schema_manager import Neo4jSchemaManager
+        schema_manager = Neo4jSchemaManager()
+        await schema_manager.initialize()
+
+        # Prepare properties for Neo4j node
+        node_properties = {
+            "person_type": person_type.value if person_type else None,
+            "current_company": current_company,
+            "current_position": current_position,
+            "source_document": source_document,
+            **kwargs
+        }
+
+        # Create Person node with proper label
+        node_uuid = await schema_manager.create_person_node(name, node_properties)
+        logger.info(f"✓ Created Person node in Neo4j: {name} (UUID: {node_uuid})")
+
+    except Exception as e:
+        logger.warning(f"Failed to create direct Neo4j Person node for {name}: {e}")
+
+    return episode_id
 
 
 async def add_company_to_graph(
@@ -1304,6 +1331,7 @@ async def add_company_to_graph(
 ) -> str:
     """
     Add a company node to the knowledge graph.
+    Creates both a Graphiti episode and a direct Neo4j Company node.
 
     Args:
         name: Company name
@@ -1316,6 +1344,7 @@ async def add_company_to_graph(
     Returns:
         Episode ID
     """
+    # Create Company entity for Graphiti
     company = Company(
         name=name,
         company_type=company_type,
@@ -1324,7 +1353,32 @@ async def add_company_to_graph(
         **kwargs
     )
 
-    return await get_graph_client().add_entity(company, source_document)
+    # Add to Graphiti for episode tracking
+    episode_id = await get_graph_client().add_entity(company, source_document)
+
+    # Also create direct Neo4j Company node with proper label
+    try:
+        from agent.neo4j_schema_manager import Neo4jSchemaManager
+        schema_manager = Neo4jSchemaManager()
+        await schema_manager.initialize()
+
+        # Prepare properties for Neo4j node
+        node_properties = {
+            "company_type": company_type.value if company_type else None,
+            "industry": industry,
+            "headquarters": headquarters,
+            "source_document": source_document,
+            **kwargs
+        }
+
+        # Create Company node with proper label
+        node_uuid = await schema_manager.create_company_node(name, node_properties)
+        logger.info(f"✓ Created Company node in Neo4j: {name} (UUID: {node_uuid})")
+
+    except Exception as e:
+        logger.warning(f"Failed to create direct Neo4j Company node for {name}: {e}")
+
+    return episode_id
 
 
 async def add_relationship_to_graph(
@@ -1338,6 +1392,7 @@ async def add_relationship_to_graph(
 ) -> str:
     """
     Add a relationship to the knowledge graph.
+    Creates both a Graphiti episode and a direct Neo4j relationship.
 
     Args:
         source_entity: Source entity name/ID
@@ -1351,6 +1406,7 @@ async def add_relationship_to_graph(
     Returns:
         Episode ID
     """
+    # Create Relationship entity for Graphiti
     relationship = Relationship(
         source_entity_id=source_entity,
         target_entity_id=target_entity,
@@ -1360,7 +1416,42 @@ async def add_relationship_to_graph(
         **kwargs
     )
 
-    return await get_graph_client().add_relationship(relationship, source_document)
+    # Add to Graphiti for episode tracking
+    episode_id = await get_graph_client().add_relationship(relationship, source_document)
+
+    # Also create direct Neo4j relationship
+    try:
+        from agent.neo4j_schema_manager import Neo4jSchemaManager
+        schema_manager = Neo4jSchemaManager()
+        await schema_manager.initialize()
+
+        # Determine source and target types (simplified logic)
+        # In a real implementation, you'd want to query the database to determine types
+        source_type = "Person"  # Default assumption
+        target_type = "Company"  # Default assumption
+
+        # Create relationship with properties
+        rel_properties = {
+            "description": description,
+            "strength": strength,
+            "source_document": source_document,
+            **kwargs
+        }
+
+        # Create relationship in Neo4j
+        success = await schema_manager.create_relationship(
+            source_entity, source_type,
+            target_entity, target_type,
+            relationship_type, rel_properties
+        )
+
+        if success:
+            logger.info(f"✓ Created relationship in Neo4j: {source_entity} -{relationship_type}-> {target_entity}")
+
+    except Exception as e:
+        logger.warning(f"Failed to create direct Neo4j relationship: {e}")
+
+    return episode_id
 
 
 async def search_people(

@@ -231,12 +231,13 @@
                     <div class="ingestion-section">
                         <h4><i class="fas fa-cogs"></i> Ingestion Mode</h4>
                         <div class="mode-selection">
+
                             <div class="mode-option">
-                                <input type="radio" id="mode-basic" name="ingestion-mode" value="basic" checked>
-                                <label for="mode-basic">
-                                    <strong>Basic Ingestion</strong>
-                                    <span class="mode-description">Standard processing with semantic chunking</span>
-                                    <code>python -m ingestion.ingest</code>
+                                <input type="radio" id="mode-full" name="ingestion-mode" value="full" checked>
+                                <label for="mode-full">
+                                    <strong>Full Processing</strong>
+                                    <span class="mode-description">Complete processing with entity extraction and knowledge graph building</span>
+                                    <code>python -m ingestion.ingest --extract-entities</code>
                                 </label>
                             </div>
                             <div class="mode-option">

@@ -736,7 +736,7 @@ class AgenticRAGUI {
 
         // Update button text based on mode
         const modeTexts = {
-            'basic': 'Start Basic Ingestion',
+            'full': 'Start Full Processing',
             'clean': 'Clean & Re-ingest All',
             'fast': 'Start Fast Processing'
         };
@@ -1028,10 +1028,10 @@ class AgenticRAGUI {
 
         // Mode-specific overrides
         switch (mode) {
-            case 'basic':
+            case 'full':
                 return {
                     ...baseConfig,
-                    mode: 'basic'
+                    mode: 'full'
                 };
 
             case 'clean':
@@ -1060,7 +1060,7 @@ class AgenticRAGUI {
         // Reset button to original state based on selected mode
         const selectedMode = document.querySelector('input[name="ingestion-mode"]:checked').value;
         const modeTexts = {
-            'basic': 'Start Basic Ingestion',
+            'full': 'Start Full Processing',
             'clean': 'Clean & Re-ingest All',
             'fast': 'Start Fast Processing'
         };

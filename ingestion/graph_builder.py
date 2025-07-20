@@ -1463,12 +1463,19 @@ class GraphBuilder:
     async def _add_entities_to_graph(self, entities: Dict[str, Any], source_document: str) -> None:
         """
         Add extracted entities to the knowledge graph as structured nodes.
+        Initializes Neo4j schema and creates both Graphiti episodes and direct Neo4j nodes.
 
         Args:
             entities: Dictionary of extracted entities
             source_document: Source document identifier
         """
         try:
+            # Initialize Neo4j schema first
+            from agent.neo4j_schema_manager import Neo4jSchemaManager
+            schema_manager = Neo4jSchemaManager()
+            await schema_manager.initialize()
+            logger.info("✓ Neo4j schema initialized with Person and Company node types")
+
             # Import graph utility functions
             from agent.graph_utils import add_person_to_graph, add_company_to_graph, add_relationship_to_graph
 

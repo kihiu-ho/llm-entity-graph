@@ -814,7 +814,7 @@ async def ingest_documents_endpoint(
         ingestion_config = json.loads(config)
 
         # Extract configuration parameters
-        mode = ingestion_config.get('mode', 'basic')
+        mode = ingestion_config.get('mode', 'full')  # Default to full mode for complete processing
         chunk_size = ingestion_config.get('chunk_size', 8000)
         chunk_overlap = ingestion_config.get('chunk_overlap', 800)
         use_semantic = ingestion_config.get('use_semantic', False)
@@ -850,8 +850,8 @@ async def ingest_documents_endpoint(
                     chunk_size=chunk_size,
                     chunk_overlap=chunk_overlap,
                     use_semantic_chunking=False,  # Always false for basic mode
-                    extract_entities=False,       # Use simple extraction for basic mode
-                    skip_graph_building=True      # Skip complex graph building
+                    extract_entities=extract_entities,  # Respect user preference for entity extraction
+                    skip_graph_building=not extract_entities  # Only skip graph building if not extracting entities
                 )
             else:
                 # Full mode: complete processing

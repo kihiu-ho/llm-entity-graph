@@ -75,17 +75,26 @@ class DocumentIngestionPipeline:
         self._initialized = False
     
     async def initialize(self):
-        """Initialize database connections."""
+        """Initialize database connections and Neo4j schema."""
         if self._initialized:
             return
-        
+
         logger.info("Initializing ingestion pipeline...")
-        
+
         # Initialize database connections
         await initialize_database()
         await initialize_graph()
         await self.graph_builder.initialize()
-        
+
+        # Initialize Neo4j schema for Person and Company nodes
+        try:
+            from agent.neo4j_schema_manager import Neo4jSchemaManager
+            schema_manager = Neo4jSchemaManager()
+            await schema_manager.initialize()
+            logger.info("✓ Neo4j schema initialized with Person and Company node types")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Neo4j schema: {e}")
+
         self._initialized = True
         logger.info("Ingestion pipeline initialized")
     

@@ -1423,13 +1423,13 @@ def search_person_sync(person_name: str) -> list:
         session = driver.session(database=neo4j_database)
 
         try:
-            # Case-insensitive search for the person
+            # Case-insensitive search for the person (using Entity label since Person/Company labels don't exist)
             cypher_query = """
-            MATCH (p:Person)
+            MATCH (p:Entity)
             WHERE toLower(p.name) CONTAINS toLower($name_query)
             RETURN p.name as name,
-                   p.company as company,
-                   p.position as position,
+                   null as company,
+                   null as position,
                    p.summary as summary,
                    p.uuid as uuid,
                    labels(p) as labels

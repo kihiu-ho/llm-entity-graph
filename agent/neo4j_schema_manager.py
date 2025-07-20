@@ -4,9 +4,11 @@ This bypasses Graphiti's generic Entity creation to ensure proper node types.
 """
 
 import logging
+import os
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 import uuid
+from dotenv import load_dotenv
 
 try:
     from neo4j import AsyncGraphDatabase, AsyncDriver
@@ -14,6 +16,9 @@ except ImportError:
     # Fallback for environments without neo4j driver
     AsyncGraphDatabase = None
     AsyncDriver = None
+
+# Load environment variables
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -24,18 +29,18 @@ class Neo4jSchemaManager:
     This ensures that entities are created with proper labels instead of generic Entity nodes.
     """
     
-    def __init__(self, uri: str, user: str, password: str):
+    def __init__(self, uri: Optional[str] = None, user: Optional[str] = None, password: Optional[str] = None):
         """
         Initialize the Neo4j schema manager.
-        
+
         Args:
-            uri: Neo4j connection URI
-            user: Neo4j username
-            password: Neo4j password
+            uri: Neo4j connection URI (defaults to NEO4J_URI env var)
+            user: Neo4j username (defaults to NEO4J_USER env var)
+            password: Neo4j password (defaults to NEO4J_PASSWORD env var)
         """
-        self.uri = uri
-        self.user = user
-        self.password = password
+        self.uri = uri or os.getenv("NEO4J_URI", "bolt://localhost:7687")
+        self.user = user or os.getenv("NEO4J_USER", "neo4j")
+        self.password = password or os.getenv("NEO4J_PASSWORD", "password")
         self.driver: Optional[AsyncDriver] = None
         self._initialized = False
     
@@ -301,3 +306,28 @@ class Neo4jSchemaManager:
             except Exception as e:
                 logger.error(f"Failed to verify node types: {e}")
                 return {"person_samples": [], "company_samples": [], "entity_samples": []}
+
+    async def execute_query(self, query: str, parameters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """
+        Execute a Cypher query and return results.
+
+        Args:
+            query: Cypher query to execute
+            parameters: Optional query parameters
+
+        Returns:
+            List of result records as dictionaries
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        async with self.driver.session() as session:
+            try:
+                result = await session.run(query, parameters or {})
+                records = []
+                async for record in result:
+                    records.append(dict(record))
+                return records
+            except Exception as e:
+                logger.error(f"Failed to execute query: {e}")
+                raise
