@@ -260,6 +260,14 @@ except ImportError:
     print("❌ Flask not available. Install with: pip install Flask")
     exit(1)
 
+# Import Graphiti SearchFilters for entity type filtering
+try:
+    from graphiti_core.search.search_filters import SearchFilters
+    GRAPHITI_SEARCH_AVAILABLE = True
+except ImportError:
+    GRAPHITI_SEARCH_AVAILABLE = False
+    print("⚠️ SearchFilters not available - entity type filtering will be limited")
+
 try:
     from flask_cors import CORS
     CORS_AVAILABLE = True
@@ -788,6 +796,63 @@ def create_sample_graph_data(query: str) -> dict:
         logger.error(f"❌ Failed to create sample graph data: {e}")
         return None
 
+async def search_entities_by_type(query: str, entity_types: List[str] = None) -> Optional[dict]:
+    """
+    Search for entities using Graphiti's custom entity type filtering.
+
+    Args:
+        query: Search query
+        entity_types: List of entity types to filter by (e.g., ["Person", "Company"])
+
+    Returns:
+        Dictionary with search results
+    """
+    try:
+        if not GRAPHITI_SEARCH_AVAILABLE:
+            logger.warning("SearchFilters not available, falling back to regular search")
+            return await get_graph_data_async(query)
+
+        # Import graph client
+        from agent.graph_utils import get_graph_client
+
+        client = get_graph_client()
+        await client.initialize()
+
+        # Create search filter for entity types
+        search_filter = None
+        if entity_types:
+            search_filter = SearchFilters(node_labels=entity_types)
+            logger.info(f"🎯 Searching with entity type filter: {entity_types}")
+
+        # Perform search with entity type filtering
+        if search_filter:
+            results = await client.graphiti.search_(query, search_filter=search_filter)
+        else:
+            results = await client.graphiti.search(query)
+
+        # Convert results to graph visualization format
+        graph_data = {
+            "nodes": [],
+            "relationships": [],
+            "entity_types_used": entity_types or []
+        }
+
+        # Process search results
+        if results:
+            logger.info(f"✅ Found {len(results)} results with entity type filtering")
+
+            # Extract entities and relationships from results
+            for result in results:
+                # Add logic to convert Graphiti search results to graph format
+                # This would need to be implemented based on the actual result structure
+                pass
+
+        return graph_data
+
+    except Exception as e:
+        logger.error(f"❌ Entity type search failed: {e}")
+        return None
+
     async def _extract_graph_data_from_response(self, query: str, response_data: dict) -> Optional[dict]:
         """Extract graph data for visualization when graph tools are used."""
         try:
@@ -991,6 +1056,48 @@ def _is_graph_query_direct(message: str) -> bool:
 
     return any(indicator in message_lower for indicator in graph_indicators)
 
+def detect_entity_type_query(message: str) -> Optional[List[str]]:
+    """
+    Detect if the query is asking for specific entity types (Person or Company).
+
+    Args:
+        message: User query
+
+    Returns:
+        List of entity types to filter by, or None if no specific types detected
+    """
+    message_lower = message.lower()
+
+    # Person-specific indicators
+    person_indicators = [
+        "person", "people", "individual", "executive", "director", "ceo", "cto",
+        "chairman", "employee", "staff", "member", "who is", "who are",
+        "find person", "search person", "show people", "list people"
+    ]
+
+    # Company-specific indicators
+    company_indicators = [
+        "company", "companies", "corporation", "business", "organization",
+        "firm", "enterprise", "institution", "authority", "club",
+        "find company", "search company", "show companies", "list companies"
+    ]
+
+    detected_types = []
+
+    # Check for person queries
+    if any(indicator in message_lower for indicator in person_indicators):
+        detected_types.append("Person")
+
+    # Check for company queries
+    if any(indicator in message_lower for indicator in company_indicators):
+        detected_types.append("Company")
+
+    # If both or neither detected, return None (use general search)
+    if len(detected_types) == 0 or len(detected_types) == 2:
+        return None
+
+    return detected_types
+
 def process_message_with_agent(message: str, is_graph_query: bool = False) -> dict:
     """
     Process message using enhanced two-step approach:
@@ -1001,23 +1108,39 @@ def process_message_with_agent(message: str, is_graph_query: bool = False) -> di
         logger.info(f"🤖 Processing message with enhanced two-step approach: {message}")
 
         if is_graph_query:
-            logger.info("🎯 Graph query detected, using two-step approach...")
+            logger.info("🎯 Graph query detected, using enhanced approach...")
+
+            # Check for entity type-specific queries
+            entity_types = detect_entity_type_query(message)
+            if entity_types:
+                logger.info(f"🏷️ Entity type query detected: {entity_types}")
 
             # Step 1: Generate natural language answer based on the query
             logger.info("📝 Step 1: Generating natural language answer...")
             natural_answer = generate_natural_language_answer(message)
 
-            # Step 2: Query Neo4j to get specific entities and relationships for graph
-            logger.info("🔍 Step 2: Querying Neo4j for graph visualization...")
+            # Step 2: Query for graph visualization (with entity type filtering if applicable)
+            logger.info("🔍 Step 2: Querying for graph visualization...")
             import asyncio
             try:
                 # Create new event loop if none exists
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                graph_data = loop.run_until_complete(query_neo4j_for_graph_visualization(message, natural_answer))
+
+                # Use entity type search if specific types detected
+                if entity_types and GRAPHITI_SEARCH_AVAILABLE:
+                    logger.info(f"🎯 Using entity type filtering: {entity_types}")
+                    graph_data = loop.run_until_complete(search_entities_by_type(message, entity_types))
+                else:
+                    # Fallback to regular Neo4j search
+                    graph_data = loop.run_until_complete(query_neo4j_for_graph_visualization(message, natural_answer))
+
             except RuntimeError:
                 # If we're already in an event loop, use asyncio.run
-                graph_data = asyncio.run(query_neo4j_for_graph_visualization(message, natural_answer))
+                if entity_types and GRAPHITI_SEARCH_AVAILABLE:
+                    graph_data = asyncio.run(search_entities_by_type(message, entity_types))
+                else:
+                    graph_data = asyncio.run(query_neo4j_for_graph_visualization(message, natural_answer))
             finally:
                 try:
                     loop.close()

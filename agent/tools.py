@@ -93,6 +93,7 @@ class VectorSearchInput(BaseModel):
 class GraphSearchInput(BaseModel):
     """Input for graph search tool."""
     query: str = Field(..., description="Search query")
+    entity_types: Optional[List[str]] = Field(default=None, description="Filter by entity types (e.g., ['Person', 'Company'])")
 
 
 class HybridSearchInput(BaseModel):
@@ -203,10 +204,10 @@ async def vector_search_tool(input_data: VectorSearchInput) -> List[ChunkResult]
 
 async def graph_search_tool(input_data: GraphSearchInput) -> List[GraphSearchResult]:
     """
-    Enhanced search of the knowledge graph with multiple search strategies.
+    Enhanced search of the knowledge graph with multiple search strategies and entity type filtering.
 
     Args:
-        input_data: Search parameters
+        input_data: Search parameters including optional entity type filtering
 
     Returns:
         List of graph search results
@@ -216,7 +217,47 @@ async def graph_search_tool(input_data: GraphSearchInput) -> List[GraphSearchRes
         all_results = []
         seen_facts = set()
 
-        # Strategy 1: Direct search
+        # Check if entity type filtering is requested
+        if input_data.entity_types:
+            logger.info(f"🏷️ Using entity type filtering: {input_data.entity_types}")
+
+            # Strategy 1: Entity type filtered search using Graphiti
+            try:
+                from agent.graph_utils import get_graph_client
+
+                # Try to import SearchFilters
+                try:
+                    from graphiti_core.search.search_filters import SearchFilters
+
+                    client = get_graph_client()
+                    await client.initialize()
+
+                    # Create search filter for entity types
+                    search_filter = SearchFilters(node_labels=input_data.entity_types)
+
+                    # Perform filtered search
+                    graphiti_results = await client.graphiti.search_(input_data.query, search_filter=search_filter)
+
+                    # Convert Graphiti results to our format
+                    for result in graphiti_results:
+                        # Extract fact content from Graphiti result
+                        fact = str(result) if result else ""
+                        if fact and fact not in seen_facts:
+                            seen_facts.add(fact)
+                            all_results.append({
+                                "fact": fact,
+                                "uuid": f"graphiti_{hash(fact)}",
+                                "search_method": "entity_type_filtered",
+                                "entity_types": input_data.entity_types
+                            })
+
+                except ImportError:
+                    logger.warning("SearchFilters not available, falling back to regular search")
+
+            except Exception as e:
+                logger.warning(f"Entity type filtered search failed: {e}")
+
+        # Strategy 2: Direct search (fallback or additional)
         try:
             results = await search_knowledge_graph(query=input_data.query)
             for r in results:
@@ -227,19 +268,20 @@ async def graph_search_tool(input_data: GraphSearchInput) -> List[GraphSearchRes
         except Exception as e:
             logger.warning(f"Direct search failed: {e}")
 
-        # Strategy 2: Enhanced search with variations
-        query_variations = _generate_query_variations(input_data.query)
-        for variation in query_variations:
-            try:
-                results = await search_knowledge_graph(query=variation)
-                for r in results:
-                    fact = r.get("fact", "")
-                    if fact and fact not in seen_facts:
-                        seen_facts.add(fact)
-                        r["search_variation"] = variation
-                        all_results.append(r)
-            except Exception as e:
-                logger.warning(f"Variation search '{variation}' failed: {e}")
+        # Strategy 3: Enhanced search with variations (if no entity type filtering or as supplement)
+        if not input_data.entity_types or len(all_results) < 5:
+            query_variations = _generate_query_variations(input_data.query)
+            for variation in query_variations:
+                try:
+                    results = await search_knowledge_graph(query=variation)
+                    for r in results:
+                        fact = r.get("fact", "")
+                        if fact and fact not in seen_facts:
+                            seen_facts.add(fact)
+                            r["search_variation"] = variation
+                            all_results.append(r)
+                except Exception as e:
+                    logger.warning(f"Variation search '{variation}' failed: {e}")
 
         # Convert to GraphSearchResult models
         graph_results = []

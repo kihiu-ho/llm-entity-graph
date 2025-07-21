@@ -24,6 +24,9 @@ from .entity_models import (
     EntityType, PersonType, CompanyType, RelationshipType
 )
 
+# Import edge types for Graphiti registration
+from .edge_models import Employment, Leadership, Investment, Partnership, Ownership
+
 # Load environment variables
 load_dotenv()
 
@@ -75,6 +78,29 @@ class GraphitiClient:
         
         self.graphiti: Optional[Graphiti] = None
         self._initialized = False
+
+        # Define custom entity types for Graphiti
+        self.entity_types = {
+            "Person": Person,
+            "Company": Company
+        }
+
+        # Define custom edge types for Graphiti
+        self.edge_types = {
+            "Employment": Employment,
+            "Leadership": Leadership,
+            "Investment": Investment,
+            "Partnership": Partnership,
+            "Ownership": Ownership
+        }
+
+        # Define edge type mapping for relationships
+        self.edge_type_map = {
+            ("Person", "Company"): ["Employment", "Leadership"],
+            ("Company", "Company"): ["Partnership", "Investment", "Ownership"],
+            ("Person", "Person"): ["Partnership"],
+            ("Entity", "Entity"): ["Investment", "Partnership"]  # Fallback for any entity type
+        }
     
     async def initialize(self):
         """Initialize Graphiti client."""
@@ -238,15 +264,19 @@ class GraphitiClient:
                 "headquarters": entity.headquarters
             })
 
-        await self.add_episode(
-            episode_id=episode_id,
-            content=episode_content,
-            source=f"entity_extraction_{entity.entity_type.value}",
-            timestamp=datetime.now(timezone.utc),
+        # Use Graphiti's add_episode with custom entity types
+        await self.graphiti.add_episode(
+            name=episode_id,
+            episode_body=episode_content,
+            source_description=f"entity_extraction_{entity.entity_type.value}",
+            reference_time=datetime.now(timezone.utc),
+            entity_types=self.entity_types,
+            edge_types=self.edge_types,
+            edge_type_map=self.edge_type_map,
             metadata=entity_metadata
         )
 
-        logger.info(f"Added {entity.entity_type.value} node: {entity.name}")
+        logger.info(f"✓ Added {entity.entity_type.value} entity with custom types: {entity.name}")
         return episode_id
 
     async def add_relationship(
