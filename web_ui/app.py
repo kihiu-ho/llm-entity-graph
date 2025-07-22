@@ -3759,6 +3759,241 @@ def internal_error(error):
     logger.error(f"Internal error: {error}")
     return jsonify({"error": "Internal server error"}), 500
 
+# ============================================================================
+# REVIEW ROUTES - Entity and Relationship Review System
+# ============================================================================
+
+@app.route('/review')
+def review_dashboard():
+    """Review dashboard showing all pending review sessions."""
+    try:
+        from staging.staging_manager import staging_manager
+        sessions = staging_manager.list_sessions()
+        return render_template('review_dashboard.html', sessions=sessions)
+    except Exception as e:
+        logger.error(f"Review dashboard error: {e}")
+        return render_template('review_dashboard.html', sessions=[], error=str(e))
+
+@app.route('/review/<session_id>')
+def review_session(session_id):
+    """Review interface for a specific session."""
+    try:
+        from staging.staging_manager import staging_manager
+        session_data = staging_manager.load_session(session_id)
+        return render_template('review.html', session_data=session_data, session_id=session_id)
+    except FileNotFoundError:
+        return render_template('error.html',
+                             error="Review session not found",
+                             message=f"Session {session_id} does not exist or has been deleted.")
+    except Exception as e:
+        logger.error(f"Review session error: {e}")
+        return render_template('error.html',
+                             error="Error loading review session",
+                             message=str(e))
+
+@app.route('/api/review/upload', methods=['POST'])
+def api_review_upload():
+    """Upload document for review (extract entities but don't ingest)."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"success": False, "error": "No file provided"})
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"success": False, "error": "No file selected"})
+
+        # Save uploaded file temporarily
+        import tempfile
+        import os
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp_file:
+            file.save(tmp_file.name)
+            temp_path = tmp_file.name
+
+        try:
+            # Get document title
+            title = request.form.get('title') or os.path.splitext(file.filename)[0]
+
+            # Process document for review
+            from staging.staging_ingestion import staging_ingestion
+            import asyncio
+
+            # Run async function
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                session_id = loop.run_until_complete(
+                    staging_ingestion.ingest_document_for_review(
+                        file_path=temp_path,
+                        document_title=title,
+                        document_source=file.filename
+                    )
+                )
+                return jsonify({"success": True, "session_id": session_id})
+            finally:
+                loop.close()
+
+        finally:
+            # Clean up temp file
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
+
+    except Exception as e:
+        logger.error(f"Review upload error: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+@app.route('/api/review/entity/<entity_id>/status', methods=['POST'])
+def api_update_entity_status(entity_id):
+    """Update entity status (approve/reject)."""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        status = data.get('status')
+
+        from staging.staging_manager import staging_manager
+        staging_manager.update_entity_status(session_id, entity_id, status)
+
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Update entity status error: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+@app.route('/api/review/entity/<entity_id>/update', methods=['POST'])
+def api_update_entity(entity_id):
+    """Update entity data."""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        updated_data = data.get('updated_data')
+
+        from staging.staging_manager import staging_manager
+        staging_manager.update_entity_status(session_id, entity_id, None, updated_data)
+
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Update entity error: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+@app.route('/api/review/relationship/<relationship_id>/status', methods=['POST'])
+def api_update_relationship_status(relationship_id):
+    """Update relationship status (approve/reject)."""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        status = data.get('status')
+
+        from staging.staging_manager import staging_manager
+        staging_manager.update_relationship_status(session_id, relationship_id, status)
+
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Update relationship status error: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+@app.route('/api/review/relationship/<relationship_id>/update', methods=['POST'])
+def api_update_relationship(relationship_id):
+    """Update relationship data."""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        updated_data = data.get('updated_data')
+
+        from staging.staging_manager import staging_manager
+        staging_manager.update_relationship_status(session_id, relationship_id, None, updated_data)
+
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Update relationship error: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+@app.route('/api/review/bulk-approve', methods=['POST'])
+def api_bulk_approve():
+    """Approve all entities and relationships in a session."""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+
+        from staging.staging_manager import staging_manager
+        session_data = staging_manager.load_session(session_id)
+
+        # Approve all entities
+        for entity in session_data['entities']:
+            if entity['status'] == 'pending':
+                staging_manager.update_entity_status(session_id, entity['id'], 'approved')
+
+        # Approve all relationships
+        for relationship in session_data['relationships']:
+            if relationship['status'] == 'pending':
+                staging_manager.update_relationship_status(session_id, relationship['id'], 'approved')
+
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Bulk approve error: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+@app.route('/api/review/bulk-reject', methods=['POST'])
+def api_bulk_reject():
+    """Reject all entities and relationships in a session."""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+
+        from staging.staging_manager import staging_manager
+        session_data = staging_manager.load_session(session_id)
+
+        # Reject all entities
+        for entity in session_data['entities']:
+            if entity['status'] == 'pending':
+                staging_manager.update_entity_status(session_id, entity['id'], 'rejected')
+
+        # Reject all relationships
+        for relationship in session_data['relationships']:
+            if relationship['status'] == 'pending':
+                staging_manager.update_relationship_status(session_id, relationship['id'], 'rejected')
+
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Bulk reject error: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+@app.route('/api/review/ingest', methods=['POST'])
+def api_ingest_approved():
+    """Ingest approved entities and relationships into Graphiti."""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+
+        from staging.staging_ingestion import staging_ingestion
+        import asyncio
+
+        # Run async function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            results = loop.run_until_complete(
+                staging_ingestion.ingest_approved_items(session_id)
+            )
+            return jsonify({"success": True, **results})
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Ingest approved error: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+@app.route('/api/review/session/<session_id>', methods=['DELETE'])
+def api_delete_session(session_id):
+    """Delete a review session."""
+    try:
+        from staging.staging_manager import staging_manager
+        staging_manager.delete_session(session_id)
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Delete session error: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
 if __name__ == '__main__':
     print(f"🌐 Starting Web UI for Agentic RAG")
     print(f"📡 API URL: {API_BASE_URL}")

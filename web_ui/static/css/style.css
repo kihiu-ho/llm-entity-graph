@@ -138,6 +138,31 @@ body {
     margin-right: 0.5rem;
 }
 
+/* Review button styling */
+.review-btn {
+    background: #28a745 !important;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+}
+
+.review-btn:hover {
+    background: #218838 !important;
+    color: white;
+    text-decoration: none;
+}
+
+.review-controls {
+    margin-bottom: 20px;
+}
+
+.help-text {
+    font-size: 12px;
+    color: #666;
+    margin: 8px 0 0 0;
+    line-height: 1.4;
+}
+
 /* Chat Area */
 .chat-area {
     flex: 1;

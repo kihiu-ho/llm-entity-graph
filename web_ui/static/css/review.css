@@ -1,0 +1,348 @@
+/* Review Interface Styles */
+
+.stat-card {
+    padding: 20px;
+    border-radius: 8px;
+    color: white;
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.stat-number {
+    font-size: 2rem;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.stat-label {
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+/* Status badges */
+.status-badge {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.6rem;
+}
+
+.status-pending {
+    background-color: #ffc107 !important;
+    color: #000;
+}
+
+.status-approved {
+    background-color: #198754 !important;
+}
+
+.status-rejected {
+    background-color: #dc3545 !important;
+}
+
+/* Table row highlighting based on status */
+.entity-row[data-status="approved"] {
+    background-color: rgba(25, 135, 84, 0.1);
+}
+
+.entity-row[data-status="rejected"] {
+    background-color: rgba(220, 53, 69, 0.1);
+}
+
+.relationship-row[data-status="approved"] {
+    background-color: rgba(25, 135, 84, 0.1);
+}
+
+.relationship-row[data-status="rejected"] {
+    background-color: rgba(220, 53, 69, 0.1);
+}
+
+/* Form controls in tables */
+.table input.form-control-sm,
+.table select.form-select-sm {
+    border: 1px solid #dee2e6;
+    font-size: 0.875rem;
+}
+
+.table input.form-control-sm:focus,
+.table select.form-select-sm:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* Action buttons */
+.btn-group-sm .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+/* Tab content */
+.tab-content {
+    border: 1px solid #dee2e6;
+    border-top: none;
+    padding: 1rem;
+    background-color: #fff;
+}
+
+/* Table responsive */
+.table-responsive {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+/* Loading states */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* Hover effects */
+.table tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* Success/Error messages */
+.alert-floating {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1050;
+    min-width: 300px;
+}
+
+/* Confidence badges */
+.badge.bg-secondary {
+    background-color: #6c757d !important;
+}
+
+/* Source text styling */
+.text-muted {
+    font-size: 0.8rem;
+    line-height: 1.2;
+}
+
+/* Button states */
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Modal customizations */
+.modal-content {
+    border-radius: 8px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .stat-card {
+        margin-bottom: 15px;
+    }
+    
+    .stat-number {
+        font-size: 1.5rem;
+    }
+    
+    .table-responsive {
+        font-size: 0.8rem;
+    }
+    
+    .btn-group-sm .btn {
+        padding: 0.2rem 0.4rem;
+        font-size: 0.7rem;
+    }
+}
+
+/* Animation for status changes */
+.status-change {
+    animation: statusPulse 0.5s ease-in-out;
+}
+
+@keyframes statusPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+/* Bulk action buttons */
+.bulk-actions {
+    margin-bottom: 1rem;
+}
+
+.bulk-actions .btn {
+    margin-right: 0.5rem;
+}
+
+/* Progress indicators */
+.progress-container {
+    margin: 1rem 0;
+}
+
+.progress {
+    height: 8px;
+}
+
+/* Entity type colors */
+.entity-type-person {
+    border-left: 4px solid #007bff;
+}
+
+.entity-type-company {
+    border-left: 4px solid #28a745;
+}
+
+.entity-type-location {
+    border-left: 4px solid #ffc107;
+}
+
+.entity-type-technology {
+    border-left: 4px solid #6f42c1;
+}
+
+/* Relationship type colors */
+.relationship-type-employment {
+    border-left: 4px solid #007bff;
+}
+
+.relationship-type-leadership {
+    border-left: 4px solid #dc3545;
+}
+
+.relationship-type-investment {
+    border-left: 4px solid #28a745;
+}
+
+.relationship-type-partnership {
+    border-left: 4px solid #fd7e14;
+}
+
+.relationship-type-ownership {
+    border-left: 4px solid #6f42c1;
+}
+
+/* Tooltip styles */
+.tooltip-inner {
+    max-width: 300px;
+    text-align: left;
+}
+
+/* Search and filter controls */
+.search-controls {
+    margin-bottom: 1rem;
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+}
+
+.search-controls .form-control,
+.search-controls .form-select {
+    margin-bottom: 0.5rem;
+}
+
+/* Highlight search matches */
+.search-highlight {
+    background-color: yellow;
+    padding: 0 2px;
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #6c757d;
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+/* Loading spinner overlay */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+.loading-spinner {
+    background-color: white;
+    padding: 2rem;
+    border-radius: 8px;
+    text-align: center;
+}
+
+/* Success animations */
+.success-animation {
+    animation: successBounce 0.6s ease-in-out;
+}
+
+@keyframes successBounce {
+    0%, 20%, 60%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-10px); }
+    80% { transform: translateY(-5px); }
+}
+
+/* Additional utility classes */
+.cursor-pointer {
+    cursor: pointer;
+}
+
+.text-truncate-custom {
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Entity attributes styling */
+.entity-attributes {
+    max-width: 300px;
+}
+
+.attribute-item {
+    margin-bottom: 8px;
+    padding: 6px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    border-left: 3px solid #007bff;
+}
+
+.attribute-item strong {
+    display: block;
+    font-size: 0.75rem;
+    color: #495057;
+    margin-bottom: 2px;
+}
+
+.attribute-value {
+    font-size: 0.8rem !important;
+    padding: 2px 6px !important;
+    height: auto !important;
+    min-height: 24px;
+}
+
+.add-attribute {
+    margin-top: 8px;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+}
+
+/* Relationship attributes */
+.relationship-attributes {
+    max-width: 250px;
+}
+
+.relationship-attributes .attribute-item {
+    border-left-color: #28a745;
+}
