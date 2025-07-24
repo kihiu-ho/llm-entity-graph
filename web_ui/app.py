@@ -32,7 +32,152 @@ def setup_agent_import():
 # Setup agent import at module level
 setup_agent_import()
 
-# Helper function for session management
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Add pre-approval database import
+try:
+    from approval.pre_approval_db import create_pre_approval_database
+    PRE_APPROVAL_DB_AVAILABLE = True
+except ImportError:
+    PRE_APPROVAL_DB_AVAILABLE = False
+    logger.warning("⚠️ Pre-approval database not available")
+
+# Global pre-approval database instance
+_pre_approval_db = None
+_pre_approval_db_lock = threading.Lock()
+
+def get_pre_approval_db():
+    """Get pre-approval database singleton instance."""
+    global _pre_approval_db
+    
+    if not PRE_APPROVAL_DB_AVAILABLE:
+        return None
+    
+    # Thread-safe singleton pattern with double-checked locking
+    if _pre_approval_db is None:
+        with _pre_approval_db_lock:
+            # Double-check after acquiring lock
+            if _pre_approval_db is None:
+                try:
+                    _pre_approval_db = create_pre_approval_database()
+                    logger.info("✅ Pre-approval database singleton created (will initialize on first use)")
+                except Exception as e:
+                    logger.error(f"❌ Failed to create pre-approval database singleton: {e}")
+                    _pre_approval_db = None
+                    return None
+    
+    # Return the existing instance
+    return _pre_approval_db
+
+def call_db_method_sync(db, method_name, *args, **kwargs):
+    """
+    Call a database method synchronously by running it in the async runner.
+    This completely avoids the async/await context issues.
+    """
+    async def _call_method():
+        # Get the method from the database instance
+        method = getattr(db, method_name)
+        
+        # Ensure database is initialized
+        if not db._initialized:
+            await db.initialize()
+        
+        # Check if the pool is available
+        if not db.pool:
+            raise RuntimeError("Database connection pool is not available")
+        
+        # Call the async method directly
+        result = await method(*args, **kwargs)
+        return result
+    
+    try:
+        # Run the async operation in the dedicated thread
+        return async_runner.run_async(_call_method())
+    except Exception as e:
+        logger.error(f"❌ Error in DB method {method_name}: {e}")
+        raise
+
+import asyncio
+import threading
+import queue
+from concurrent.futures import ThreadPoolExecutor
+
+# Database event loop runner for better async handling
+class AsyncDatabaseRunner:
+    """Dedicated thread for running async database operations."""
+    
+    def __init__(self):
+        self.loop = None
+        self.thread = None
+        self.task_queue = queue.Queue()
+        self.shutdown = False
+        
+    def start(self):
+        """Start the async runner thread."""
+        if self.thread is None or not self.thread.is_alive():
+            self.shutdown = False
+            self.thread = threading.Thread(target=self._run_loop, daemon=True)
+            self.thread.start()
+    
+    def _run_loop(self):
+        """Run the event loop in the dedicated thread."""
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        
+        try:
+            self.loop.run_forever()
+        finally:
+            try:
+                # Cancel any pending tasks
+                pending = asyncio.all_tasks(self.loop)
+                for task in pending:
+                    task.cancel()
+                
+                if pending:
+                    self.loop.run_until_complete(
+                        asyncio.gather(*pending, return_exceptions=True)
+                    )
+            except Exception as e:
+                logger.warning(f"⚠️ Error during loop cleanup: {e}")
+            finally:
+                self.loop.close()
+    
+    def run_async(self, coro, timeout=30):
+        """Run an async coroutine in the dedicated thread."""
+        if self.loop is None or not self.thread.is_alive():
+            self.start()
+            # Wait for loop to be ready
+            import time
+            for _ in range(50):  # Wait up to 5 seconds
+                if self.loop is not None:
+                    break
+                time.sleep(0.1)
+        
+        if self.loop is None:
+            raise RuntimeError("Failed to start async event loop")
+        
+        # Submit the coroutine to the loop
+        future = asyncio.run_coroutine_threadsafe(coro, self.loop)
+        try:
+            return future.result(timeout=timeout)
+        except Exception as e:
+            logger.error(f"❌ Error in async operation: {e}")
+            raise
+    
+    def stop(self):
+        """Stop the async runner."""
+        if self.loop:
+            self.loop.call_soon_threadsafe(self.loop.stop)
+        self.shutdown = True
+
+# Global async runner instance
+async_runner = AsyncDatabaseRunner()
+
+def run_async_in_thread(coro):
+    """Run async coroutine using the dedicated async runner."""
+    return async_runner.run_async(coro)
 def close_neo4j_session(session):
     """Helper function to properly close Neo4j sessions (sync or async)."""
     try:
@@ -302,6 +447,37 @@ else:
 API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:8058')
 WEB_UI_PORT = int(os.getenv('WEB_UI_PORT', 5001))
 WEB_UI_HOST = os.getenv('WEB_UI_HOST', '0.0.0.0')
+
+# Global variables for ingestion tracking and cancellation
+import uuid
+INGESTION_STATUS = {
+    'active': False,
+    'progress': 0.0,
+    'message': '',
+    'start_time': None,
+    'file_count': 0,
+    'current_file': 0,
+    'cancelled': False,
+    'ingestion_id': None
+}
+
+def reset_ingestion_status():
+    """Reset ingestion status to default values."""
+    global INGESTION_STATUS
+    INGESTION_STATUS.update({
+        'active': False,
+        'progress': 0.0,
+        'message': '',
+        'start_time': None,
+        'file_count': 0,
+        'current_file': 0,
+        'cancelled': False,
+        'ingestion_id': None
+    })
+
+def check_ingestion_cancelled():
+    """Check if ingestion has been cancelled."""
+    return INGESTION_STATUS.get('cancelled', False)
 
 class WebUIClient:
     """Client for communicating with the Agentic RAG API."""
@@ -950,6 +1126,112 @@ client = WebUIClient(API_BASE_URL)
 def index():
     """Serve the main chat interface."""
     return render_template('index.html')
+
+@app.route('/approval')
+def approval_dashboard():
+    """Serve the approval dashboard interface."""
+    return render_template('approval.html')
+
+@app.route('/unified')
+def unified_dashboard():
+    """Serve the unified ingestion-approval interface."""
+    return render_template('unified_combined.html')
+
+@app.route('/api/latest-entities')
+def get_latest_entities():
+    """Get latest ingested entities from pre-approval database."""
+    try:
+        limit = int(request.args.get('limit', 100))
+        entity_types = request.args.getlist('entity_types')
+        status_filter = request.args.get('status', 'pending')
+        
+        # Try to get pre-approval database
+        pre_db = get_pre_approval_db()
+        if pre_db is None:
+            # Fallback to approval service if pre-approval DB not available
+            service = get_approval_service()
+            if service is None:
+                return jsonify({
+                    "success": False, 
+                    "error": "Neither pre-approval database nor approval service available"
+                }), 500
+            
+            # Use existing approval service logic
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(service.initialize())
+                entities = loop.run_until_complete(
+                    service.get_latest_entities(
+                        limit=limit,
+                        entity_types=entity_types if entity_types else None,
+                        status_filter=status_filter
+                    )
+                )
+            finally:
+                loop.close()
+        else:
+            # Use pre-approval database
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                entities = loop.run_until_complete(
+                    pre_db.get_entities(
+                        status_filter=status_filter,
+                        entity_types=entity_types if entity_types else None,
+                        limit=limit
+                    )
+                )
+            finally:
+                if pre_db._initialized:
+                    loop.run_until_complete(pre_db.close())
+                loop.close()
+        
+        return jsonify({
+            "success": True,
+            "entities": entities,
+            "count": len(entities)
+        })
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to get latest entities: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/pre-approval/entities')
+def get_pre_approval_entities():
+    """Get entities from pre-approval database with filtering."""
+    try:
+        limit = int(request.args.get('limit', 100))
+        entity_types = request.args.getlist('entity_types')
+        status_filter = request.args.get('status', 'pending')
+        # Note: search functionality not implemented in pre_approval_db yet
+        
+        # Try to get pre-approval database
+        pre_db = get_pre_approval_db()
+        if pre_db is None:
+            return jsonify({
+                "success": False, 
+                "error": "Pre-approval database not available"
+            }), 503
+        
+        # Use thread-safe async execution to prevent race conditions
+        entities = call_db_method_sync(
+            pre_db, 
+            'get_entities',
+            limit=limit,
+            entity_types=entity_types if entity_types else None,
+            status_filter=status_filter
+        )
+        
+        return jsonify({
+            "success": True,
+            "entities": entities,
+            "count": len(entities)
+        })
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to get pre-approval entities: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/health')
 def health():
@@ -2505,19 +2787,31 @@ def chat():
 @app.route('/api/ingest', methods=['POST'])
 def ingest_files():
     """Handle file ingestion with file upload."""
+    global INGESTION_STATUS
+    
     try:
+        # Initialize ingestion status
+        reset_ingestion_status()
+        INGESTION_STATUS['active'] = True
+        INGESTION_STATUS['start_time'] = datetime.now()
+        INGESTION_STATUS['ingestion_id'] = str(uuid.uuid4())
+        
+        logger.info(f"🚀 Starting new ingestion (ID: {INGESTION_STATUS['ingestion_id']})")
+        
         # Get uploaded files
         files = request.files.getlist('files') if 'files' in request.files else []
         config_str = request.form.get('config', '{}')
 
         # Validate files are provided
         if not files:
+            reset_ingestion_status()
             return jsonify({"error": "No files provided for ingestion"}), 400
 
         # Parse configuration
         try:
             config = json.loads(config_str)
         except json.JSONDecodeError:
+            reset_ingestion_status()
             return jsonify({"error": "Invalid configuration JSON"}), 400
 
         # Enhanced configuration options
@@ -2583,11 +2877,23 @@ def ingest_files():
 
         def generate_progress():
             """Generate streaming progress updates with appropriate ingestion pipeline."""
+            global INGESTION_STATUS
+            
             try:
+                # Store file count
+                INGESTION_STATUS['file_count'] = len(saved_files)
+                
                 # Use the unified ingestion pipeline for all modes
                 logger.info(f"🚀 Starting {ingestion_mode} document ingestion pipeline")
 
-                yield f"data: {json.dumps({'type': 'progress', 'current': 0, 'total': 100, 'message': 'Starting ingestion...'})}\n\n"
+                yield f"data: {json.dumps({'type': 'progress', 'current': 0, 'total': 100, 'message': 'Starting ingestion...', 'ingestion_id': INGESTION_STATUS['ingestion_id']})}\n\n"
+                
+                # Check for cancellation early
+                if check_ingestion_cancelled():
+                    logger.info("🛑 Ingestion cancelled before starting")
+                    yield f"data: {json.dumps({'type': 'cancelled', 'message': 'Ingestion cancelled by user'})}\n\n"
+                    return
+                
                 yield f"data: {json.dumps({'type': 'progress', 'current': 10, 'total': 100, 'message': f'Saved {len(saved_files)} files to temporary directory'})}\n\n"
 
                 # Call the unified ingestion pipeline
@@ -2608,6 +2914,9 @@ def ingest_files():
                 yield f"data: {json.dumps({'type': 'error', 'message': f'Ingestion failed: {str(ingestion_error)}'})}\n\n"
 
             finally:
+                # Reset ingestion status when done
+                reset_ingestion_status()
+                
                 # Clean up temporary files after ingestion is complete
                 import shutil
                 try:
@@ -2621,6 +2930,55 @@ def ingest_files():
     except Exception as e:
         logger.error(f"Ingestion endpoint error: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/ingest/cancel', methods=['POST'])
+def cancel_ingestion():
+    """Cancel ongoing ingestion process."""
+    global INGESTION_STATUS
+    
+    try:
+        data = request.get_json() or {}
+        ingestion_id = data.get('ingestion_id')
+        
+        # Check if there's an active ingestion
+        if not INGESTION_STATUS['active']:
+            return jsonify({
+                "success": False,
+                "error": "No active ingestion to cancel"
+            }), 400
+        
+        # If ingestion_id is provided, verify it matches
+        if ingestion_id and INGESTION_STATUS['ingestion_id'] != ingestion_id:
+            return jsonify({
+                "success": False,
+                "error": "Invalid ingestion ID"
+            }), 400
+        
+        # Set cancellation flag
+        INGESTION_STATUS['cancelled'] = True
+        INGESTION_STATUS['message'] = 'Cancellation requested...'
+        
+        logger.info(f"🛑 Ingestion cancellation requested (ID: {INGESTION_STATUS['ingestion_id']})")
+        
+        return jsonify({
+            "success": True,
+            "message": "Ingestion cancellation requested",
+            "ingestion_id": INGESTION_STATUS['ingestion_id']
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to cancel ingestion: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/ingest/status', methods=['GET'])
+def get_ingestion_status():
+    """Get current ingestion status."""
+    return jsonify({
+        "status": INGESTION_STATUS,
+        "timestamp": datetime.now().isoformat()
+    })
 
 
 def convert_ingestion_results_to_dict(ingestion_result):
@@ -2679,6 +3037,12 @@ def run_unified_ingestion(temp_dir, ingestion_mode, clean_before_ingest, chunk_s
     import asyncio
 
     try:
+        # Check for cancellation before starting
+        if check_ingestion_cancelled():
+            logger.info("🛑 Ingestion cancelled in run_unified_ingestion")
+            yield f"data: {json.dumps({'type': 'cancelled', 'message': 'Ingestion cancelled by user'})}\n\n"
+            return
+            
         yield f"data: {json.dumps({'type': 'progress', 'current': 15, 'total': 100, 'message': f'Initializing {ingestion_mode} ingestion pipeline...'})}\n\n"
 
         start_time = time.time()
@@ -2721,6 +3085,12 @@ def run_unified_ingestion(temp_dir, ingestion_mode, clean_before_ingest, chunk_s
 
         yield f"data: {json.dumps({'type': 'progress', 'current': 25, 'total': 100, 'message': 'Creating ingestion pipeline...'})}\n\n"
 
+        # Check for cancellation before creating pipeline
+        if check_ingestion_cancelled():
+            logger.info("🛑 Ingestion cancelled before creating pipeline")
+            yield f"data: {json.dumps({'type': 'cancelled', 'message': 'Ingestion cancelled by user'})}\n\n"
+            return
+
         # Create pipeline
         pipeline = DocumentIngestionPipeline(
             config=config,
@@ -2728,19 +3098,37 @@ def run_unified_ingestion(temp_dir, ingestion_mode, clean_before_ingest, chunk_s
             clean_before_ingest=clean_before_ingest
         )
 
+        # Check for cancellation before processing
+        if check_ingestion_cancelled():
+            logger.info("🛑 Ingestion cancelled before document processing")
+            yield f"data: {json.dumps({'type': 'cancelled', 'message': 'Ingestion cancelled by user'})}\n\n"
+            return
+
         yield f"data: {json.dumps({'type': 'progress', 'current': 35, 'total': 100, 'message': 'Starting document processing...'})}\n\n"
 
         # Run the ingestion asynchronously
         async def run_ingestion():
             """Async wrapper for ingestion."""
             try:
+                # Check for cancellation at start of async operation
+                if check_ingestion_cancelled():
+                    logger.info("🛑 Ingestion cancelled in async wrapper")
+                    return None
+                
                 logger.info("📄 Running document ingestion...")
                 logger.info(f"📁 Documents folder: {temp_dir}")
                 logger.info(f"📄 Files to process: {saved_files}")
 
                 # Progress callback for the pipeline
                 def progress_callback(current: int, total: int):
+                    # Check for cancellation in progress callback
+                    if check_ingestion_cancelled():
+                        logger.info(f"🛑 Ingestion cancelled during processing (file {current}/{total})")
+                        raise Exception("Ingestion cancelled by user")
+                    
                     progress = 35 + (current * 45 // total)  # 35-80% for processing
+                    INGESTION_STATUS['current_file'] = current
+                    INGESTION_STATUS['progress'] = progress / 100.0
                     return progress
 
                 # Run ingestion with progress tracking
@@ -2749,8 +3137,12 @@ def run_unified_ingestion(temp_dir, ingestion_mode, clean_before_ingest, chunk_s
                 return results
 
             except Exception as e:
-                logger.error(f"❌ Ingestion pipeline failed: {e}")
-                raise e
+                if "cancelled by user" in str(e):
+                    logger.info(f"🛑 Ingestion cancelled: {e}")
+                    return None
+                else:
+                    logger.error(f"❌ Ingestion pipeline failed: {e}")
+                    raise e
 
         # Execute the ingestion
         try:
@@ -2765,7 +3157,19 @@ def run_unified_ingestion(temp_dir, ingestion_mode, clean_before_ingest, chunk_s
             # No event loop running, safe to use asyncio.run()
             ingestion_result = asyncio.run(run_ingestion())
 
+        # Check if ingestion was cancelled
+        if ingestion_result is None or check_ingestion_cancelled():
+            logger.info("🛑 Ingestion was cancelled, stopping pipeline")
+            yield f"data: {json.dumps({'type': 'cancelled', 'message': 'Ingestion cancelled by user'})}\n\n"
+            return
+
         yield f"data: {json.dumps({'type': 'progress', 'current': 80, 'total': 100, 'message': 'Processing completed, running cleanup...'})}\n\n"
+
+        # Check for cancellation before cleanup
+        if check_ingestion_cancelled():
+            logger.info("🛑 Ingestion cancelled before cleanup")
+            yield f"data: {json.dumps({'type': 'cancelled', 'message': 'Ingestion cancelled by user'})}\n\n"
+            return
 
         # Cleanup phase
         yield f"data: {json.dumps({'type': 'progress', 'current': 85, 'total': 100, 'message': 'Running cleanup...'})}\n\n"
@@ -3747,6 +4151,1104 @@ def find_node_id_by_name(nodes: list, name: str) -> str:
         if node_name == name_lower or name_lower in node_name:
             return node.get('id')
     return None
+
+# ===== PRE-APPROVAL SYSTEM API =====
+
+@app.route('/api/pre-approval/entities/<path:entity_id>/approve', methods=['POST'])
+def approve_pre_approval_entity(entity_id):
+    """Approve an entity in pre-approval database."""
+    if not PRE_APPROVAL_DB_AVAILABLE:
+        return jsonify({"error": "Pre-approval system not available"}), 503
+    
+    try:
+        data = request.get_json() or {}
+        reviewer_id = data.get('reviewer_id', 'unknown')
+        review_notes = data.get('review_notes', '')
+        
+        pre_db = get_pre_approval_db()
+        if not pre_db:
+            return jsonify({"error": "Pre-approval database unavailable"}), 503
+        
+        # Use the new synchronous calling pattern
+        success = call_db_method_sync(pre_db, 'approve_entity', entity_id, reviewer_id, review_notes)
+        
+        if success:
+            return jsonify({"success": True, "message": "Entity approved successfully"})
+        else:
+            return jsonify({"success": False, "error": "Failed to approve entity"}), 400
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to approve pre-approval entity: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/pre-approval/entities/<path:entity_id>/reject', methods=['POST'])
+def reject_pre_approval_entity(entity_id):
+    """Reject an entity in pre-approval database."""
+    if not PRE_APPROVAL_DB_AVAILABLE:
+        return jsonify({"error": "Pre-approval system not available"}), 503
+    
+    try:
+        data = request.get_json() or {}
+        reviewer_id = data.get('reviewer_id', 'unknown')
+        review_notes = data.get('review_notes', 'Rejected via unified dashboard')
+        
+        pre_db = get_pre_approval_db()
+        if not pre_db:
+            return jsonify({"error": "Pre-approval database unavailable"}), 503
+        
+        # Use the new synchronous calling pattern
+        success = call_db_method_sync(pre_db, 'reject_entity', entity_id, reviewer_id, review_notes)
+        
+        if success:
+            return jsonify({"success": True, "message": "Entity rejected successfully"})
+        else:
+            return jsonify({"success": False, "error": "Failed to reject entity"}), 400
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to reject pre-approval entity: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/pre-approval/relationships')
+def get_pre_approval_relationships():
+    """Get relationships from pre-approval database."""
+    if not PRE_APPROVAL_DB_AVAILABLE:
+        return jsonify({"error": "Pre-approval system not available"}), 503
+
+    try:
+        status_filter = request.args.get('status', 'pending')
+        source_document = request.args.get('source_document')
+        limit = int(request.args.get('limit', '100'))
+        
+        pre_db = get_pre_approval_db()
+        if not pre_db:
+            return jsonify({"error": "Pre-approval database unavailable"}), 503
+
+        async def get_relationships():
+            return await pre_db.get_relationships(
+                status_filter=status_filter,
+                source_document=source_document,
+                limit=limit
+            )
+
+        # Run async function
+        loop = asyncio.get_event_loop()
+        relationships = loop.run_until_complete(get_relationships())
+        
+        return jsonify({
+            "relationships": relationships,
+            "count": len(relationships),
+            "status": "success"
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Failed to get pre-approval relationships: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/pre-approval/relationships/<path:relationship_id>/approve', methods=['POST'])
+def approve_pre_approval_relationship(relationship_id):
+    """Approve a relationship in pre-approval database."""
+    if not PRE_APPROVAL_DB_AVAILABLE:
+        return jsonify({"error": "Pre-approval system not available"}), 503
+
+    try:
+        data = request.get_json() or {}
+        reviewer_id = data.get('reviewer_id', 'default_reviewer')
+        review_notes = data.get('review_notes', '')
+        
+        pre_db = get_pre_approval_db()
+        if not pre_db:
+            return jsonify({"error": "Pre-approval database unavailable"}), 503
+
+        # Use the new synchronous calling pattern
+        success = call_db_method_sync(pre_db, 'approve_relationship', relationship_id, reviewer_id, review_notes)
+        
+        if success:
+            logger.info(f"✅ Approved pre-approval relationship: {relationship_id}")
+            return jsonify({
+                "status": "success",
+                "message": f"Relationship {relationship_id} approved successfully"
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": f"Failed to approve relationship {relationship_id}"
+            }), 400
+
+    except Exception as e:
+        logger.error(f"❌ Failed to approve pre-approval relationship: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/pre-approval/relationships/<path:relationship_id>/reject', methods=['POST'])
+def reject_pre_approval_relationship(relationship_id):
+    """Reject a relationship in pre-approval database."""
+    if not PRE_APPROVAL_DB_AVAILABLE:
+        return jsonify({"error": "Pre-approval system not available"}), 503
+
+    try:
+        data = request.get_json() or {}
+        reviewer_id = data.get('reviewer_id', 'default_reviewer')
+        review_notes = data.get('review_notes', 'No reason provided')
+        
+        if not review_notes.strip():
+            return jsonify({
+                "status": "error", 
+                "message": "Review notes are required for rejection"
+            }), 400
+        
+        pre_db = get_pre_approval_db()
+        if not pre_db:
+            return jsonify({"error": "Pre-approval database unavailable"}), 503
+
+        # Use the new synchronous calling pattern
+        success = call_db_method_sync(pre_db, 'reject_relationship', relationship_id, reviewer_id, review_notes)
+        
+        if success:
+            logger.info(f"❌ Rejected pre-approval relationship: {relationship_id}")
+            return jsonify({
+                "status": "success",
+                "message": f"Relationship {relationship_id} rejected successfully"
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": f"Failed to reject relationship {relationship_id}"
+            }), 400
+
+    except Exception as e:
+        logger.error(f"❌ Failed to reject pre-approval relationship: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/pre-approval/ingest-approved', methods=['POST'])
+def ingest_approved_entities():
+    """Ingest approved entities to Neo4j."""
+    if not PRE_APPROVAL_DB_AVAILABLE:
+        return jsonify({"error": "Pre-approval system not available"}), 503
+
+    try:
+        from approval.neo4j_ingestion_service import create_neo4j_ingestion_service
+        
+        ingestion_service = create_neo4j_ingestion_service()
+        
+        async def run_ingestion():
+            await ingestion_service.initialize()
+            try:
+                result = await ingestion_service.auto_ingest_approved_entities()
+                return result
+            finally:
+                await ingestion_service.close()
+
+        # Run async function
+        loop = asyncio.get_event_loop()
+        result = loop.run_until_complete(run_ingestion())
+        
+        return jsonify({
+            "status": "success",
+            "message": "Ingestion completed",
+            "result": result
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Failed to ingest approved entities: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/pre-approval/statistics')
+def get_pre_approval_statistics():
+    """Get pre-approval database statistics."""
+    if not PRE_APPROVAL_DB_AVAILABLE:
+        return jsonify({"error": "Pre-approval system not available"}), 503
+    
+    try:
+        pre_db = get_pre_approval_db()
+        if not pre_db:
+            return jsonify({"error": "Pre-approval database unavailable"}), 503
+        
+        # Use thread-safe async execution to prevent race conditions
+        stats = call_db_method_sync(pre_db, 'get_statistics')
+        
+        # Extract entity statistics for easier frontend access
+        entity_stats = stats.get('entities', {})
+        
+        return jsonify({
+            "success": True,
+            "total": entity_stats.get('total', 0),
+            "pending": entity_stats.get('pending', 0),
+            "approved": entity_stats.get('approved', 0),
+            "rejected": entity_stats.get('rejected', 0),
+            "ingested": entity_stats.get('ingested', 0),
+            "entities": entity_stats,
+            "relationships": stats.get('relationships', {})
+        })
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to get pre-approval statistics: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/pre-approval/entities/clean-pending', methods=['DELETE'])
+def clean_pending_entities():
+    """Delete all pending entities from pre-approval database."""
+    if not PRE_APPROVAL_DB_AVAILABLE:
+        return jsonify({"error": "Pre-approval system not available"}), 503
+    
+    try:
+        pre_db = get_pre_approval_db()
+        if not pre_db:
+            return jsonify({"error": "Pre-approval database unavailable"}), 503
+        
+        # Use the new synchronous calling pattern
+        deleted_count = call_db_method_sync(pre_db, 'clean_pending_entities')
+        
+        return jsonify({
+            "success": True,
+            "deleted_count": deleted_count,
+            "message": f"Successfully deleted {deleted_count} pending entities"
+        })
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to clean pending entities: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/pre-approval/entities/approve-all', methods=['POST'])
+def approve_all_entities():
+    """Approve all pending entities in pre-approval database."""
+    if not PRE_APPROVAL_DB_AVAILABLE:
+        return jsonify({"error": "Pre-approval system not available"}), 503
+    
+    try:
+        data = request.get_json() or {}
+        reviewer_id = data.get('reviewer_id', 'default_reviewer')
+        review_notes = data.get('review_notes', 'Bulk approval - all pending entities')
+        
+        pre_db = get_pre_approval_db()
+        if not pre_db:
+            return jsonify({"error": "Pre-approval database unavailable"}), 503
+        
+        # Use the new synchronous calling pattern
+        approved_count = call_db_method_sync(pre_db, 'approve_all_pending_entities', reviewer_id, review_notes)
+        
+        return jsonify({
+            "success": True,
+            "approved_count": approved_count,
+            "message": f"Successfully approved {approved_count} entities"
+        })
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to approve all entities: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# ===== END PRE-APPROVAL SYSTEM API =====
+
+# ===== APPROVAL SYSTEM API ENDPOINTS =====
+
+# Import approval system components
+try:
+    from approval import create_entity_approval_service
+    APPROVAL_SYSTEM_AVAILABLE = True
+    logger.info("✅ Approval system imported successfully")
+except ImportError as e:
+    APPROVAL_SYSTEM_AVAILABLE = False
+    logger.warning(f"⚠️ Approval system not available: {e}")
+
+# Global approval service instance
+approval_service = None
+
+def get_approval_service():
+    """Get or create approval service instance."""
+    global approval_service
+    if not approval_service and APPROVAL_SYSTEM_AVAILABLE:
+        try:
+            # Use same Neo4j configuration as main app
+            neo4j_uri = os.getenv('NEO4J_URI', 'bolt://localhost:7687')
+            neo4j_user = os.getenv('NEO4J_USER', 'neo4j')
+            neo4j_password = os.getenv('NEO4J_PASSWORD', 'password')
+            
+            approval_service = create_entity_approval_service(
+                neo4j_uri=neo4j_uri,
+                neo4j_user=neo4j_user,
+                neo4j_password=neo4j_password
+            )
+            
+            # Initialize service in background
+            import asyncio
+            def init_service():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(approval_service.initialize())
+                    logger.info("✅ Approval service initialized")
+                except Exception as e:
+                    logger.error(f"❌ Failed to initialize approval service: {e}")
+                finally:
+                    loop.close()
+            
+            threading.Thread(target=init_service, daemon=True).start()
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to create approval service: {e}")
+            approval_service = None
+    
+    return approval_service
+
+@app.route('/api/approval/sessions', methods=['POST'])
+def create_approval_session():
+    """Create a new approval session for a document."""
+    if not APPROVAL_SYSTEM_AVAILABLE:
+        return jsonify({"error": "Approval system not available"}), 503
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+        
+        document_title = data.get('document_title')
+        document_source = data.get('document_source')
+        reviewer_id = data.get('reviewer_id', 'default_reviewer')
+        
+        if not document_title or not document_source:
+            return jsonify({"error": "document_title and document_source are required"}), 400
+        
+        service = get_approval_service()
+        if not service:
+            return jsonify({"error": "Approval service unavailable"}), 503
+        
+        # Run async operation in thread
+        def create_session():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                session_id = loop.run_until_complete(
+                    service.create_approval_session(
+                        document_title=document_title,
+                        document_source=document_source,
+                        reviewer_id=reviewer_id
+                    )
+                )
+                return session_id
+            finally:
+                loop.close()
+        
+        session_id = create_session()
+        
+        return jsonify({
+            "session_id": session_id,
+            "document_title": document_title,
+            "document_source": document_source,
+            "status": "created"
+        })
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to create approval session: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/approval/entities/<document_source>')
+def get_entities_for_approval(document_source):
+    """Get entities that need approval for a document."""
+    if not APPROVAL_SYSTEM_AVAILABLE:
+        return jsonify({"error": "Approval system not available"}), 503
+    
+    try:
+        entity_types = request.args.getlist('entity_types')
+        status_filter = request.args.get('status', 'pending')
+        
+        service = get_approval_service()
+        if not service:
+            return jsonify({"error": "Approval service unavailable"}), 503
+        
+        # Run async operation in thread
+        def get_entities():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                entities = loop.run_until_complete(
+                    service.get_entities_for_approval(
+                        document_source=document_source,
+                        entity_types=entity_types if entity_types else None,
+                        status_filter=status_filter
+                    )
+                )
+                return entities
+            finally:
+                loop.close()
+        
+        entities = get_entities()
+        
+        return jsonify({
+            "entities": entities,
+            "total_count": len(entities),
+            "document_source": document_source,
+            "status_filter": status_filter
+        })
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to get entities for approval: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/approval/relationships/<document_source>')
+def get_relationships_for_approval(document_source):
+    """Get relationships that need approval for a document."""
+    if not APPROVAL_SYSTEM_AVAILABLE:
+        return jsonify({"error": "Approval system not available"}), 503
+    
+    try:
+        status_filter = request.args.get('status', 'pending')
+        
+        service = get_approval_service()
+        if not service:
+            return jsonify({"error": "Approval service unavailable"}), 503
+        
+        # Run async operation in thread
+        def get_relationships():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                relationships = loop.run_until_complete(
+                    service.get_relationships_for_approval(
+                        document_source=document_source,
+                        status_filter=status_filter
+                    )
+                )
+                return relationships
+            finally:
+                loop.close()
+        
+        relationships = get_relationships()
+        
+        return jsonify({
+            "relationships": relationships,
+            "total_count": len(relationships),
+            "document_source": document_source,
+            "status_filter": status_filter
+        })
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to get relationships for approval: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/approval/entities/<path:entity_id>/approve', methods=['POST'])
+def approve_entity(entity_id):
+    """Approve an entity, optionally with modifications."""
+    if not APPROVAL_SYSTEM_AVAILABLE:
+        return jsonify({"error": "Approval system not available"}), 503
+    
+    try:
+        data = request.get_json() or {}
+        reviewer_id = data.get('reviewer_id', 'default_reviewer')
+        review_notes = data.get('review_notes')
+        modified_data = data.get('modified_data')
+        
+        service = get_approval_service()
+        if not service:
+            return jsonify({"error": "Approval service unavailable"}), 503
+        
+        # Initialize service if needed
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(service.initialize())
+            success = loop.run_until_complete(
+                service.approve_entity(
+                    entity_id=entity_id,
+                    reviewer_id=reviewer_id,
+                    review_notes=review_notes,
+                    modified_data=modified_data
+                )
+            )
+        finally:
+            loop.close()
+        
+        if success:
+            return jsonify({
+                "success": True,
+                "status": "approved",
+                "entity_id": entity_id,
+                "reviewer_id": reviewer_id,
+                "modified": bool(modified_data)
+            })
+        else:
+            return jsonify({"success": False, "error": "Failed to approve entity"}), 400
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to approve entity {entity_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/approval/entities/<path:entity_id>/reject', methods=['POST'])
+def reject_entity(entity_id):
+    """Reject an entity with reasoning."""
+    if not APPROVAL_SYSTEM_AVAILABLE:
+        return jsonify({"error": "Approval system not available"}), 503
+    
+    try:
+        data = request.get_json() or {}
+        reviewer_id = data.get('reviewer_id', 'default_reviewer')
+        review_notes = data.get('review_notes', 'Rejected via unified dashboard')
+        
+        service = get_approval_service()
+        if not service:
+            return jsonify({"error": "Approval service unavailable"}), 503
+        
+        # Initialize service if needed  
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(service.initialize())
+            success = loop.run_until_complete(
+                service.reject_entity(
+                    entity_id=entity_id,
+                    reviewer_id=reviewer_id,
+                    review_notes=review_notes
+                )
+            )
+        finally:
+            loop.close()
+        
+        if success:
+            return jsonify({
+                "success": True,
+                "status": "rejected",
+                "entity_id": entity_id,
+                "reviewer_id": reviewer_id,
+                "review_notes": review_notes
+            })
+        else:
+            return jsonify({"success": False, "error": "Failed to reject entity"}), 400
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to reject entity {entity_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/approval/entities/bulk-approve', methods=['POST'])
+def bulk_approve_entities():
+    """Bulk approve multiple entities."""
+    if not APPROVAL_SYSTEM_AVAILABLE:
+        return jsonify({"error": "Approval system not available"}), 503
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+        
+        entity_ids = data.get('entity_ids', [])
+        reviewer_id = data.get('reviewer_id', 'default_reviewer')
+        review_notes = data.get('review_notes')
+        
+        if not entity_ids:
+            return jsonify({"error": "entity_ids list is required"}), 400
+        
+        service = get_approval_service()
+        if not service:
+            return jsonify({"error": "Approval service unavailable"}), 503
+        
+        # Run async operation in thread
+        def bulk_approve():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                results = loop.run_until_complete(
+                    service.bulk_approve_entities(
+                        entity_ids=entity_ids,
+                        reviewer_id=reviewer_id,
+                        review_notes=review_notes
+                    )
+                )
+                return results
+            finally:
+                loop.close()
+        
+        results = bulk_approve()
+        
+        successful_count = sum(1 for success in results.values() if success)
+        
+        return jsonify({
+            "results": results,
+            "total_requested": len(entity_ids),
+            "successful_count": successful_count,
+            "failed_count": len(entity_ids) - successful_count
+        })
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to bulk approve entities: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/approval/search/<document_source>')
+def search_entities(document_source):
+    """Search entities by name or properties."""
+    if not APPROVAL_SYSTEM_AVAILABLE:
+        return jsonify({"error": "Approval system not available"}), 503
+    
+    try:
+        search_query = request.args.get('q', '')
+        entity_types = request.args.getlist('entity_types')
+        
+        if not search_query:
+            return jsonify({"error": "Search query 'q' parameter is required"}), 400
+        
+        service = get_approval_service()
+        if not service:
+            return jsonify({"error": "Approval service unavailable"}), 503
+        
+        # Run async operation in thread
+        def search():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                entities = loop.run_until_complete(
+                    service.search_entities(
+                        document_source=document_source,
+                        search_query=search_query,
+                        entity_types=entity_types if entity_types else None
+                    )
+                )
+                return entities
+            finally:
+                loop.close()
+        
+        entities = search()
+        
+        return jsonify({
+            "entities": entities,
+            "total_count": len(entities),
+            "search_query": search_query,
+            "document_source": document_source
+        })
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to search entities: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/approval/sessions/<session_id>/status')
+def get_approval_session_status(session_id):
+    """Get the current status of an approval session."""
+    if not APPROVAL_SYSTEM_AVAILABLE:
+        return jsonify({"error": "Approval system not available"}), 503
+    
+    try:
+        service = get_approval_service()
+        if not service:
+            return jsonify({"error": "Approval service unavailable"}), 503
+        
+        # Run async operation in thread
+        def get_status():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                status = loop.run_until_complete(
+                    service.get_approval_session_status(session_id)
+                )
+                return status
+            finally:
+                loop.close()
+        
+        status = get_status()
+        
+        if not status:
+            return jsonify({"error": "Session not found"}), 404
+        
+        return jsonify(status)
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to get session status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/approval/statistics')
+def get_approval_statistics():
+    """Get overall approval statistics."""
+    if not APPROVAL_SYSTEM_AVAILABLE:
+        return jsonify({"error": "Approval system not available"}), 503
+    
+    try:
+        document_source = request.args.get('document_source')
+        
+        service = get_approval_service()
+        if not service:
+            return jsonify({"error": "Approval service unavailable"}), 503
+        
+        # Run async operation in thread
+        def get_stats():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                stats = loop.run_until_complete(
+                    service.get_approval_statistics(document_source)
+                )
+                return stats
+            finally:
+                loop.close()
+        
+        stats = get_stats()
+        
+        return jsonify(stats)
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to get approval statistics: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# ===== END APPROVAL SYSTEM API =====
+
+# ===== DATABASE CLEANUP API =====
+
+@app.route('/api/cleanup/neo4j', methods=['POST'])
+def cleanup_neo4j_database():
+    """Clean up Neo4j database - remove all nodes and relationships."""
+    try:
+        data = request.get_json() or {}
+        confirm = data.get('confirm', False)
+        
+        if not confirm:
+            return jsonify({
+                "error": "Cleanup requires confirmation",
+                "message": "Set 'confirm': true in request body to proceed"
+            }), 400
+        
+        logger.info("🧹 Starting Neo4j database cleanup...")
+        
+        # Get Neo4j session and driver
+        session, driver = get_neo4j_session_with_driver()
+        
+        try:
+            # Count existing nodes and relationships before cleanup
+            count_result = session.run("MATCH (n) RETURN count(n) as node_count")
+            node_count = count_result.single()["node_count"]
+            
+            rel_count_result = session.run("MATCH ()-[r]->() RETURN count(r) as rel_count")
+            rel_count = rel_count_result.single()["rel_count"]
+            
+            logger.info(f"📊 Found {node_count} nodes and {rel_count} relationships to delete")
+            
+            # Delete all relationships first
+            session.run("MATCH ()-[r]->() DELETE r")
+            logger.info("✅ Deleted all relationships")
+            
+            # Delete all nodes
+            session.run("MATCH (n) DELETE n")
+            logger.info("✅ Deleted all nodes")
+            
+            # Drop all constraints and indexes
+            try:
+                constraints_result = session.run("SHOW CONSTRAINTS")
+                for record in constraints_result:
+                    constraint_name = record.get("name")
+                    if constraint_name:
+                        session.run(f"DROP CONSTRAINT {constraint_name}")
+                        logger.info(f"✅ Dropped constraint: {constraint_name}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to drop some constraints: {e}")
+            
+            try:
+                indexes_result = session.run("SHOW INDEXES")
+                for record in indexes_result:
+                    index_name = record.get("name")
+                    if index_name and not index_name.startswith("system"):
+                        session.run(f"DROP INDEX {index_name}")
+                        logger.info(f"✅ Dropped index: {index_name}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to drop some indexes: {e}")
+            
+            logger.info("🎉 Neo4j database cleanup completed successfully")
+            
+            return jsonify({
+                "success": True,
+                "message": "Neo4j database cleaned successfully",
+                "stats": {
+                    "nodes_deleted": node_count,
+                    "relationships_deleted": rel_count
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"❌ Neo4j cleanup failed: {e}")
+            return jsonify({
+                "success": False,
+                "error": str(e)
+            }), 500
+        finally:
+            close_neo4j_session(session)
+            if driver:
+                driver.close()
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to cleanup Neo4j database: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/cleanup/vector', methods=['POST'])
+def cleanup_vector_database():
+    """Clean up vector database - remove all embeddings."""
+    try:
+        data = request.get_json() or {}
+        confirm = data.get('confirm', False)
+        
+        if not confirm:
+            return jsonify({
+                "error": "Cleanup requires confirmation",
+                "message": "Set 'confirm': true in request body to proceed"
+            }), 400
+        
+        logger.info("🧹 Starting vector database cleanup...")
+        
+        try:
+            # Try to import vector store utilities
+            from agent.vector_store import VectorStore
+            
+            # Initialize vector store
+            vector_store = VectorStore()
+            
+            # Get collection info before cleanup
+            try:
+                collection_info = vector_store.get_collection_info()
+                doc_count = collection_info.get('count', 0)
+                logger.info(f"📊 Found {doc_count} documents in vector database")
+            except:
+                doc_count = "unknown"
+            
+            # Clear the vector database
+            result = vector_store.clear_database()
+            
+            if result.get('success', False):
+                logger.info("🎉 Vector database cleanup completed successfully")
+                return jsonify({
+                    "success": True,
+                    "message": "Vector database cleaned successfully",
+                    "stats": {
+                        "documents_deleted": doc_count
+                    }
+                })
+            else:
+                error_msg = result.get('error', 'Unknown error during vector cleanup')
+                logger.error(f"❌ Vector cleanup failed: {error_msg}")
+                return jsonify({
+                    "success": False,
+                    "error": error_msg
+                }), 500
+                
+        except ImportError:
+            # Fallback: try to clear PostgreSQL vector table directly
+            logger.info("⚠️ Vector store module not available, trying direct PostgreSQL cleanup...")
+            
+            try:
+                # Try to import psycopg2, handle gracefully if not available
+                try:
+                    import psycopg2
+                except ImportError as psycopg2_error:
+                    logger.warning(f"❌ psycopg2 not available: {psycopg2_error}")
+                    return jsonify({
+                        "success": False,
+                        "error": "PostgreSQL cleanup requires psycopg2 to be installed. Install it with: pip install psycopg2-binary"
+                    }), 503
+                
+                from dotenv import load_dotenv
+                load_dotenv()
+                
+                # Get PostgreSQL connection
+                db_url = os.getenv('DATABASE_URL')
+                if not db_url:
+                    return jsonify({
+                        "success": False,
+                        "error": "DATABASE_URL not configured"
+                    }), 500
+                
+                conn = psycopg2.connect(db_url)
+                cur = conn.cursor()
+                
+                # Count documents before deletion
+                try:
+                    cur.execute("SELECT COUNT(*) FROM documents")
+                    doc_count = cur.fetchone()[0]
+                    logger.info(f"📊 Found {doc_count} documents in PostgreSQL")
+                except:
+                    doc_count = "unknown"
+                
+                # Delete all documents and embeddings
+                cur.execute("DELETE FROM documents")
+                conn.commit()
+                
+                cur.close()
+                conn.close()
+                
+                logger.info("🎉 PostgreSQL vector cleanup completed successfully")
+                return jsonify({
+                    "success": True,
+                    "message": "Vector database (PostgreSQL) cleaned successfully",
+                    "stats": {
+                        "documents_deleted": doc_count
+                    }
+                })
+                
+            except Exception as pg_error:
+                logger.error(f"❌ PostgreSQL cleanup failed: {pg_error}")
+                return jsonify({
+                    "success": False,
+                    "error": f"PostgreSQL cleanup failed: {str(pg_error)}"
+                }), 500
+                
+    except Exception as e:
+        logger.error(f"❌ Failed to cleanup vector database: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/cleanup/all', methods=['POST'])
+def cleanup_all_databases():
+    """Clean up both Neo4j and vector databases."""
+    try:
+        data = request.get_json() or {}
+        confirm = data.get('confirm', False)
+        
+        if not confirm:
+            return jsonify({
+                "error": "Cleanup requires confirmation",
+                "message": "Set 'confirm': true in request body to proceed"
+            }), 400
+        
+        logger.info("🧹 Starting complete database cleanup (Neo4j + Vector)...")
+        
+        results = {
+            "neo4j": {"success": False},
+            "vector": {"success": False}
+        }
+        
+        # Cleanup Neo4j
+        try:
+            session, driver = get_neo4j_session_with_driver()
+            try:
+                # Count existing data
+                count_result = session.run("MATCH (n) RETURN count(n) as node_count")
+                node_count = count_result.single()["node_count"]
+                rel_count_result = session.run("MATCH ()-[r]->() RETURN count(r) as rel_count")
+                rel_count = rel_count_result.single()["rel_count"]
+                
+                # Delete all relationships and nodes
+                session.run("MATCH ()-[r]->() DELETE r")
+                session.run("MATCH (n) DELETE n")
+                
+                results["neo4j"] = {
+                    "success": True,
+                    "nodes_deleted": node_count,
+                    "relationships_deleted": rel_count
+                }
+                logger.info(f"✅ Neo4j cleanup completed: {node_count} nodes, {rel_count} relationships deleted")
+                
+            finally:
+                close_neo4j_session(session)
+                if driver:
+                    driver.close()
+                    
+        except Exception as e:
+            logger.error(f"❌ Neo4j cleanup failed: {e}")
+            results["neo4j"] = {"success": False, "error": str(e)}
+        
+        # Cleanup Vector Database
+        try:
+            from agent.vector_store import VectorStore
+            vector_store = VectorStore()
+            
+            try:
+                collection_info = vector_store.get_collection_info()
+                doc_count = collection_info.get('count', 0)
+            except:
+                doc_count = "unknown"
+            
+            cleanup_result = vector_store.clear_database()
+            if cleanup_result.get('success', False):
+                results["vector"] = {
+                    "success": True,
+                    "documents_deleted": doc_count
+                }
+                logger.info(f"✅ Vector cleanup completed: {doc_count} documents deleted")
+            else:
+                results["vector"] = {
+                    "success": False,
+                    "error": cleanup_result.get('error', 'Unknown error')
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Vector cleanup failed: {e}")
+            results["vector"] = {"success": False, "error": str(e)}
+        
+        # Determine overall success
+        overall_success = results["neo4j"]["success"] and results["vector"]["success"]
+        
+        if overall_success:
+            logger.info("🎉 Complete database cleanup completed successfully")
+            return jsonify({
+                "success": True,
+                "message": "All databases cleaned successfully",
+                "results": results
+            })
+        else:
+            logger.warning("⚠️ Partial cleanup completed with some failures")
+            return jsonify({
+                "success": False,
+                "message": "Partial cleanup completed with some failures",
+                "results": results
+            }), 207  # Multi-status response
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to cleanup databases: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/cleanup/status', methods=['GET'])
+def get_cleanup_status():
+    """Get current database status (counts of nodes, relationships, documents)."""
+    try:
+        status = {
+            "neo4j": {"available": False},
+            "vector": {"available": False}
+        }
+        
+        # Check Neo4j status
+        try:
+            session, driver = get_neo4j_session_with_driver()
+            try:
+                # Count nodes and relationships
+                node_result = session.run("MATCH (n) RETURN count(n) as count")
+                node_count = node_result.single()["count"]
+                
+                rel_result = session.run("MATCH ()-[r]->() RETURN count(r) as count")
+                rel_count = rel_result.single()["count"]
+                
+                # Get node type distribution
+                type_result = session.run("""
+                    MATCH (n) 
+                    RETURN labels(n)[0] as label, count(n) as count 
+                    ORDER BY count DESC
+                """)
+                node_types = {record["label"]: record["count"] for record in type_result}
+                
+                status["neo4j"] = {
+                    "available": True,
+                    "nodes": node_count,
+                    "relationships": rel_count,
+                    "node_types": node_types
+                }
+                
+            finally:
+                close_neo4j_session(session)
+                if driver:
+                    driver.close()
+                    
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to get Neo4j status: {e}")
+            status["neo4j"] = {"available": False, "error": str(e)}
+        
+        # Check Vector database status
+        try:
+            from agent.vector_store import VectorStore
+            vector_store = VectorStore()
+            collection_info = vector_store.get_collection_info()
+            
+            status["vector"] = {
+                "available": True,
+                "documents": collection_info.get('count', 0),
+                "collection_name": collection_info.get('name', 'unknown')
+            }
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to get vector status: {e}")
+            status["vector"] = {"available": False, "error": str(e)}
+        
+        return jsonify(status)
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to get cleanup status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# ===== END DATABASE CLEANUP API =====
 
 @app.errorhandler(404)
 def not_found(error):

@@ -88,7 +88,14 @@ class DocumentIngestionPipeline:
 
         # Initialize Neo4j schema for Person and Company nodes
         try:
-            from agent.neo4j_schema_manager import Neo4jSchemaManager
+            try:
+                from agent.neo4j_schema_manager import Neo4jSchemaManager
+            except ImportError:
+                # For direct execution or testing
+                import sys
+                import os
+                sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                from agent.neo4j_schema_manager import Neo4jSchemaManager
             schema_manager = Neo4jSchemaManager()
             await schema_manager.initialize()
             logger.info("✓ Neo4j schema initialized with Person and Company node types")
@@ -307,6 +314,13 @@ class DocumentIngestionPipeline:
         
         logger.info(f"Saved document to PostgreSQL with ID: {document_id}")
         
+        # Store entities in pre-approval database for review
+        await self._store_entities_for_approval(
+            embedded_chunks,
+            document_source,
+            document_title
+        )
+        
         # Add to knowledge graph (if enabled)
         relationships_created = 0
         graph_errors = []
@@ -495,6 +509,104 @@ class DocumentIngestionPipeline:
         await self.graph_builder.clear_graph()
         logger.info("Cleaned knowledge graph")
 
+    async def _store_entities_for_approval(self, chunks: List[DocumentChunk], document_source: str, document_title: str):
+        """Store extracted entities in pre-approval database for review."""
+        try:
+            # Import pre-approval database
+            try:
+                from ..approval.pre_approval_db import create_pre_approval_database
+            except ImportError:
+                # For direct execution or testing
+                import sys
+                import os
+                sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                from approval.pre_approval_db import create_pre_approval_database
+            
+            pre_db = create_pre_approval_database()
+            await pre_db.initialize()
+            
+            try:
+                entities_stored = 0
+                ingestion_batch_id = f"{document_source}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                
+                # Get entities from the first chunk (document-level extraction means all chunks have same entities)
+                if chunks and hasattr(chunks[0], 'metadata') and 'entities' in chunks[0].metadata:
+                    all_entities = chunks[0].metadata['entities']
+                    logger.info(f"📥 Storing entities from document '{document_title}' in pre-approval database")
+                    
+                    # Store simple list entities (people, companies, etc.)
+                    simple_entity_types = {
+                        'people': 'Person',
+                        'companies': 'Company',
+                        'technologies': 'Technology',
+                        'locations': 'Location',
+                        'network_entities': 'Entity'
+                    }
+                    
+                    for category, entity_type in simple_entity_types.items():
+                        entities_list = all_entities.get(category, [])
+                        for entity_name in entities_list:
+                            if entity_name and isinstance(entity_name, str) and entity_name.strip():
+                                await pre_db.store_entity(
+                                    name=entity_name.strip(),
+                                    entity_type=entity_type,
+                                    properties={
+                                        'extraction_category': category,
+                                        'document_title': document_title
+                                    },
+                                    confidence_score=0.8,  # Default confidence
+                                    source_document=document_source,
+                                    ingestion_batch_id=ingestion_batch_id
+                                )
+                                entities_stored += 1
+                    
+                    # Store nested entities (corporate_roles, financial_entities, etc.)
+                    nested_entity_categories = {
+                        'corporate_roles': 'Person',
+                        'financial_entities': 'Entity'
+                    }
+                    
+                    for category, default_type in nested_entity_categories.items():
+                        nested_entities = all_entities.get(category, {})
+                        if isinstance(nested_entities, dict):
+                            for subcategory, items in nested_entities.items():
+                                if isinstance(items, list):
+                                    for item in items:
+                                        if item and isinstance(item, str) and item.strip():
+                                            # Determine entity type based on subcategory
+                                            if 'director' in subcategory.lower() or 'chairman' in subcategory.lower() or 'ceo' in subcategory.lower():
+                                                entity_type = 'Person'
+                                            elif 'company' in subcategory.lower() or 'auditor' in subcategory.lower():
+                                                entity_type = 'Company'
+                                            else:
+                                                entity_type = default_type
+                                            
+                                            await pre_db.store_entity(
+                                                name=item.strip(),
+                                                entity_type=entity_type,
+                                                properties={
+                                                    'extraction_category': category,
+                                                    'extraction_subcategory': subcategory,
+                                                    'document_title': document_title
+                                                },
+                                                confidence_score=0.8,
+                                                source_document=document_source,
+                                                ingestion_batch_id=ingestion_batch_id
+                                            )
+                                            entities_stored += 1
+                    
+                    logger.info(f"✅ Stored {entities_stored} entities in pre-approval database for review")
+                    
+                else:
+                    logger.info("ℹ️ No entities found to store in pre-approval database")
+                    
+            finally:
+                await pre_db.close()
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to store entities in pre-approval database: {e}")
+            # Don't raise the error - this shouldn't stop the ingestion process
+
     async def _cleanup_entity_labels(self) -> Optional[Dict[str, int]]:
         """
         Clean up Entity labels from Person and Company nodes.
@@ -504,7 +616,14 @@ class DocumentIngestionPipeline:
         """
         try:
             # Import here to avoid circular imports
-            from ..agent.neo4j_schema_manager import Neo4jSchemaManager
+            try:
+                from ..agent.neo4j_schema_manager import Neo4jSchemaManager
+            except ImportError:
+                # For direct execution or testing
+                import sys
+                import os
+                sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                from agent.neo4j_schema_manager import Neo4jSchemaManager
 
             schema_manager = Neo4jSchemaManager(
                 uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),

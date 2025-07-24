@@ -1,0 +1,1680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔄 Unified Ingestion & Approval Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/approval.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .unified-container {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .dashboard-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+        
+        .full-width-section {
+            grid-column: 1 / -1;
+        }
+        
+        .unified-panel {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .panel-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        .panel-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            border-left: 4px solid #3498db;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .stat-card.approved { border-left-color: #27ae60; }
+        .stat-card.rejected { border-left-color: #e74c3c; }
+        .stat-card.pending { border-left-color: #f39c12; }
+        
+        .stat-icon {
+            font-size: 2rem;
+            color: #3498db;
+        }
+        
+        .stat-card.approved .stat-icon { color: #27ae60; }
+        .stat-card.rejected .stat-icon { color: #e74c3c; }
+        .stat-card.pending .stat-icon { color: #f39c12; }
+        
+        .stat-content {
+            flex: 1;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #2c3e50;
+        }
+        
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        
+        .controls-section {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        
+        .control-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .filters {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        
+        .filter-group label {
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 0.875rem;
+        }
+        
+        .table-section {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        .section-header h3 {
+            color: #2c3e50;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .section-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .ingestion-section {
+            margin-bottom: 2rem;
+        }
+        
+        .upload-area {
+            border: 2px dashed #3498db;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            background: white;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .upload-area:hover {
+            border-color: #2980b9;
+            background: #f8f9ff;
+        }
+        
+        .upload-area.dragover {
+            border-color: #27ae60;
+            background: #f0fff4;
+        }
+        
+        .approval-section {
+            min-height: 400px;
+        }
+        
+        .entity-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            background: white;
+        }
+        
+        .entity-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 1rem;
+            border-bottom: 1px solid #e9ecef;
+            transition: background-color 0.2s;
+        }
+        
+        .entity-item:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .entity-info {
+            flex-grow: 1;
+        }
+        
+        .entity-name {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+            font-size: 1.1rem;
+        }
+        
+        .entity-meta {
+            font-size: 0.875rem;
+            color: #6c757d;
+            margin-bottom: 0.75rem;
+        }
+        
+        .entity-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .btn-approve {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .btn-reject {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-approved {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-rejected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: #6c757d;
+        }
+        
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+        
+        .auto-refresh {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+        
+        .auto-refresh input[type="checkbox"] {
+            transform: scale(1.2);
+        }
+        
+        .cleanup-controls {
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .cleanup-controls h4 {
+            margin: 0 0 1rem 0;
+            color: #2c3e50;
+            font-size: 1rem;
+        }
+        
+        .cleanup-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .cleanup-btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        
+        .cleanup-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .neo4j-btn {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .neo4j-btn:hover {
+            background: #c0392b;
+        }
+        
+        .vector-btn {
+            background: #f39c12;
+            color: white;
+        }
+        
+        .vector-btn:hover {
+            background: #d68910;
+        }
+        
+        .all-btn {
+            background: #e67e22;
+            color: white;
+        }
+        
+        .all-btn:hover {
+            background: #d35400;
+        }
+        
+        .status-btn {
+            background: #3498db;
+            color: white;
+        }
+        
+        .status-btn:hover {
+            background: #2980b9;
+        }
+        
+        .cleanup-status {
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+            font-size: 0.875rem;
+        }
+        
+        .cleanup-status.success {
+            border-left-color: #27ae60;
+            background: #d4edda;
+        }
+        
+        .cleanup-status.error {
+            border-left-color: #e74c3c;
+            background: #f8d7da;
+        }
+        
+        .cleanup-status h5 {
+            margin: 0 0 0.5rem 0;
+            color: #2c3e50;
+        }
+        
+        .cleanup-status ul {
+            margin: 0;
+            padding-left: 1.5rem;
+        }
+        
+        @media (max-width: 768px) {
+            .unified-container {
+                padding: 1rem;
+            }
+            
+            .dashboard-row {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+            
+            .control-actions {
+                flex-direction: column;
+            }
+            
+            .filters {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-sync-alt"></i> Unified Ingestion & Approval Dashboard</h1>
+                <div class="status-indicator">
+                    <span id="status-dot" class="status-dot"></span>
+                    <span id="status-text">Ready</span>
+                </div>
+            </div>
+            <nav class="nav-buttons">
+                <button id="back-to-main" class="nav-btn">
+                    <i class="fas fa-arrow-left"></i> Back to Main
+                </button>
+            </nav>
+        </header>
+
+        <div class="unified-container">
+            <!-- Statistics Dashboard -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-list"></i></div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="total-entities">0</div>
+                        <div class="stat-label">Total Entities</div>
+                    </div>
+                </div>
+                <div class="stat-card approved">
+                    <div class="stat-icon"><i class="fas fa-check"></i></div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="approved-count">0</div>
+                        <div class="stat-label">Approved</div>
+                    </div>
+                </div>
+                <div class="stat-card rejected">
+                    <div class="stat-icon"><i class="fas fa-times"></i></div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="rejected-count">0</div>
+                        <div class="stat-label">Rejected</div>
+                    </div>
+                </div>
+                <div class="stat-card pending">
+                    <div class="stat-icon"><i class="fas fa-clock"></i></div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="pending-count">0</div>
+                        <div class="stat-label">Pending</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="dashboard-row">
+                <!-- Ingestion Panel -->
+                <div class="unified-panel">
+                    <div class="panel-header">
+                        <i class="fas fa-upload" style="color: #3498db;"></i>
+                        <h2 class="panel-title">Document Ingestion</h2>
+                    </div>
+                    
+                    <div class="ingestion-section">
+                        <div class="form-group">
+                            <label>Ingestion Mode:</label>
+                            <div class="radio-group">
+                                <label>
+                                    <input type="radio" name="ingestion-mode" value="full" checked>
+                                    <span>Full Processing</span>
+                                </label>
+                                <label>
+                                    <input type="radio" name="ingestion-mode" value="fast">
+                                    <span>Fast Mode</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="upload-area" id="upload-area">
+                            <div class="upload-content">
+                                <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: #3498db; margin-bottom: 1rem;"></i>
+                                <p><strong>Drag & drop files here</strong></p>
+                                <p>or <button type="button" class="link-btn" id="browse-files">browse files</button></p>
+                                <p class="upload-hint">Supported: .md, .txt, .pdf, .doc, .docx</p>
+                            </div>
+                            <input type="file" id="file-input" multiple accept=".md,.txt,.pdf,.doc,.docx" style="display: none;">
+                        </div>
+                        
+                        <div id="selected-files" class="selected-files" style="display: none;">
+                            <h4>Selected Files:</h4>
+                            <ul id="file-list"></ul>
+                        </div>
+                        
+                        <div id="ingestion-progress" class="progress-container" style="display: none;">
+                            <div class="progress-header">
+                                <span>Processing...</span>
+                                <span id="progress-percentage">0%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div id="progress-fill" class="progress-fill"></div>
+                            </div>
+                            <div id="progress-details" class="progress-details"></div>
+                        </div>
+                        
+                        <div class="action-buttons">
+                            <button id="start-ingestion" class="primary-btn" disabled>
+                                <i class="fas fa-play"></i> Start Ingestion
+                            </button>
+                            <button id="cancel-ingestion" class="secondary-btn" style="display: none;">
+                                <i class="fas fa-stop"></i> Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Quick Preview Panel -->
+                <div class="unified-panel">
+                    <div class="panel-header">
+                        <i class="fas fa-clipboard-check" style="color: #27ae60;"></i>
+                        <h2 class="panel-title">Quick Entity Preview</h2>
+                    </div>
+                    
+                    <div class="approval-section">
+                        <div class="auto-refresh">
+                            <input type="checkbox" id="auto-refresh-entities" checked>
+                            <label for="auto-refresh-entities">Auto-refresh entities</label>
+                            <span id="entity-count">0 entities</span>
+                        </div>
+                        
+                        <!-- Database Cleanup Controls -->
+                        <div class="cleanup-controls">
+                            <h4><i class="fas fa-broom"></i> Database Cleanup</h4>
+                            <div class="cleanup-buttons">
+                                <button id="cleanup-neo4j" class="cleanup-btn neo4j-btn">
+                                    <i class="fas fa-project-diagram"></i> Clean Neo4j
+                                </button>
+                                <button id="cleanup-vector" class="cleanup-btn vector-btn">
+                                    <i class="fas fa-database"></i> Clean Vector DB
+                                </button>
+                                <button id="cleanup-all" class="cleanup-btn all-btn">
+                                    <i class="fas fa-broom"></i> Clean All
+                                </button>
+                                <button id="cleanup-status" class="cleanup-btn status-btn">
+                                    <i class="fas fa-info-circle"></i> DB Status
+                                </button>
+                            </div>
+                            <div id="cleanup-status-display" class="cleanup-status" style="display: none;"></div>
+                        </div>
+                        
+                        <div class="filter-controls">
+                            <select id="entity-type-filter">
+                                <option value="">All Types</option>
+                                <option value="Person">Person</option>
+                                <option value="Company">Company</option>
+                            </select>
+                            <select id="status-filter">
+                                <option value="pending">Pending</option>
+                                <option value="approved">Approved</option>
+                                <option value="rejected">Rejected</option>
+                            </select>
+                            <button id="refresh-entities" class="secondary-btn">
+                                <i class="fas fa-sync"></i> Refresh
+                            </button>
+                        </div>
+                        
+                        <div id="entity-list" class="entity-list">
+                            <div class="empty-state">
+                                <i class="fas fa-inbox"></i>
+                                <h3>No entities to review</h3>
+                                <p>Upload documents to see extracted entities here</p>
+                            </div>
+                        </div>
+                        
+                        <div class="bulk-actions" style="display: none;">
+                            <button id="bulk-approve" class="btn-approve">
+                                <i class="fas fa-check"></i> Approve Selected
+                            </button>
+                            <button id="bulk-reject" class="btn-reject">
+                                <i class="fas fa-times"></i> Reject Selected
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Control Panel -->
+            <div class="controls-section">
+                <div class="section-header">
+                    <h3><i class="fas fa-sliders-h"></i> Review Controls</h3>
+                </div>
+                <div class="control-actions">
+                    <button id="bulk-approve-btn" class="btn success" disabled>
+                        <i class="fas fa-check-double"></i> Bulk Approve
+                    </button>
+                    <button id="approve-all-btn" class="btn success">
+                        <i class="fas fa-check-circle"></i> Approve All
+                    </button>
+                    <button id="clean-pending-btn" class="btn warning">
+                        <i class="fas fa-trash-alt"></i> Clean Pending
+                    </button>
+                    <button id="refresh-data-btn" class="btn secondary">
+                        <i class="fas fa-sync"></i> Refresh Data
+                    </button>
+                </div>
+                
+                <div class="filters">
+                    <div class="filter-group">
+                        <label for="entity-type-filter-main">Entity Type:</label>
+                        <select id="entity-type-filter-main">
+                            <option value="">All Types</option>
+                            <option value="Person">Person</option>
+                            <option value="Company">Company</option>
+                            <option value="Location">Location</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="status-filter-main">Status:</label>
+                        <select id="status-filter-main">
+                            <option value="pending">Pending</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="all">All</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="search-input">Search:</label>
+                        <input type="text" id="search-input" placeholder="Search entities...">
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Entity Review Table -->
+            <div class="table-section">
+                <div class="section-header">
+                    <h3><i class="fas fa-table"></i> Entity Review</h3>
+                    <div class="section-controls">
+                        <span id="entity-count-main">0 entities</span>
+                        <button id="select-all-btn" class="btn small">Select All</button>
+                        <button id="clear-selection-btn" class="btn small">Clear</button>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table id="entities-table" class="review-table">
+                        <thead>
+                            <tr>
+                                <th class="select-col">
+                                    <input type="checkbox" id="select-all-checkbox">
+                                </th>
+                                <th class="type-col">Type</th>
+                                <th class="name-col">Name</th>
+                                <th class="properties-col">Properties</th>
+                                <th class="status-col">Status</th>
+                                <th class="actions-col">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="entities-tbody">
+                            <!-- Entity rows will be populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div id="no-entities" class="empty-state hidden">
+                    <i class="fas fa-inbox"></i>
+                    <h4>No Entities Found</h4>
+                    <p>No entities match your current filters.</p>
+                </div>
+            </div>
+            
+            <!-- Relationship Review Section -->
+            <div class="table-section">
+                <div class="section-header">
+                    <h3><i class="fas fa-project-diagram"></i> Relationship Review</h3>
+                    <div class="section-controls">
+                        <span id="relationship-count">0 relationships</span>
+                        <button id="toggle-relationships-btn" class="btn small">
+                            <i class="fas fa-eye"></i> Show Relationships
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="relationships-container" class="hidden">
+                    <div class="table-container">
+                        <table id="relationships-table" class="review-table">
+                            <thead>
+                                <tr>
+                                    <th class="select-col">
+                                        <input type="checkbox" id="select-all-relationships">
+                                    </th>
+                                    <th class="type-col">Type</th>
+                                    <th class="source-col">Source</th>
+                                    <th class="target-col">Target</th>
+                                    <th class="properties-col">Properties</th>
+                                    <th class="status-col">Status</th>
+                                    <th class="actions-col">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="relationships-tbody">
+                                <!-- Relationship rows will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Entity Detail Modal -->
+        <div id="entity-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-user"></i> Entity Details</h3>
+                    <button id="close-entity-modal" class="close-btn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div id="entity-details">
+                        <!-- Entity details will be populated by JavaScript -->
+                    </div>
+                    <div class="property-editor">
+                        <h4>Edit Properties</h4>
+                        <div class="property-controls">
+                            <button id="add-property-btn" class="btn small success">
+                                <i class="fas fa-plus"></i> Add Property
+                            </button>
+                            <button id="reset-properties-btn" class="btn small secondary">
+                                <i class="fas fa-undo"></i> Reset
+                            </button>
+                        </div>
+                        <div id="property-fields">
+                            <!-- Property fields will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="save-entity-btn" class="btn success">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
+                    <button id="approve-entity-btn" class="btn primary">
+                        <i class="fas fa-check"></i> Approve
+                    </button>
+                    <button id="reject-entity-btn" class="btn danger">
+                        <i class="fas fa-times"></i> Reject
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        // Prevent app.js from initializing on unified page
+        window.preventAppJSInit = true;
+    </script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+        // Initialize the unified dashboard that combines both ingestion and approval functionality
+        class UnifiedCombinedDashboard {
+            constructor() {
+                this.ingestionInProgress = false;
+                this.abortController = null;
+                this.autoRefreshInterval = null;
+                this.currentIngestionId = null;
+                this.entities = [];
+                this.relationships = [];
+                this.selectedEntities = new Set();
+                this.currentEntity = null;
+                this.filters = {
+                    entityTypes: [],
+                    status: 'pending',
+                    search: ''
+                };
+                this.setupEventListeners();
+                this.loadLatestEntities();
+                this.startAutoRefresh();
+                this.loadStatistics();
+            }
+            
+            setupEventListeners() {
+                // File upload handling
+                const uploadArea = document.getElementById('upload-area');
+                const fileInput = document.getElementById('file-input');
+                const browseBtn = document.getElementById('browse-files');
+                const startBtn = document.getElementById('start-ingestion');
+                const cancelBtn = document.getElementById('cancel-ingestion');
+                
+                // Drag and drop
+                uploadArea.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    uploadArea.classList.add('dragover');
+                });
+                
+                uploadArea.addEventListener('dragleave', () => {
+                    uploadArea.classList.remove('dragover');
+                });
+                
+                uploadArea.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    uploadArea.classList.remove('dragover');
+                    this.handleFiles(e.dataTransfer.files);
+                });
+                
+                browseBtn.addEventListener('click', () => fileInput.click());
+                fileInput.addEventListener('change', (e) => this.handleFiles(e.target.files));
+                startBtn.addEventListener('click', () => this.startIngestion());
+                cancelBtn.addEventListener('click', () => this.cancelIngestion());
+                
+                // Approval controls
+                document.getElementById('refresh-entities').addEventListener('click', () => this.loadLatestEntities());
+                document.getElementById('entity-type-filter').addEventListener('change', () => this.loadLatestEntities());
+                document.getElementById('status-filter').addEventListener('change', () => this.loadLatestEntities());
+                
+                // Main control filters
+                document.getElementById('entity-type-filter-main').addEventListener('change', () => this.loadFullEntities());
+                document.getElementById('status-filter-main').addEventListener('change', () => this.loadFullEntities());
+                document.getElementById('search-input').addEventListener('input', () => this.loadFullEntities());
+                
+                // Control buttons
+                document.getElementById('approve-all-btn').addEventListener('click', () => this.handleApproveAll());
+                document.getElementById('clean-pending-btn').addEventListener('click', () => this.handleCleanPending());
+                document.getElementById('refresh-data-btn').addEventListener('click', () => {
+                    this.loadLatestEntities();
+                    this.loadFullEntities();
+                    this.loadStatistics();
+                });
+                
+                // Auto-refresh toggle
+                document.getElementById('auto-refresh-entities').addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        this.startAutoRefresh();
+                    } else {
+                        this.stopAutoRefresh();
+                    }
+                });
+                
+                // Cleanup controls
+                document.getElementById('cleanup-neo4j').addEventListener('click', () => this.cleanupDatabase('neo4j'));
+                document.getElementById('cleanup-vector').addEventListener('click', () => this.cleanupDatabase('vector'));
+                document.getElementById('cleanup-all').addEventListener('click', () => this.cleanupDatabase('all'));
+                document.getElementById('cleanup-status').addEventListener('click', () => this.showDatabaseStatus());
+                
+                // Navigation
+                document.getElementById('back-to-main').addEventListener('click', () => {
+                    window.location.href = '/';
+                });
+                
+                // Relationships toggle
+                document.getElementById('toggle-relationships-btn').addEventListener('click', () => {
+                    this.toggleRelationships();
+                });
+            }
+            
+            handleFiles(files) {
+                const fileList = document.getElementById('file-list');
+                const selectedFiles = document.getElementById('selected-files');
+                const startBtn = document.getElementById('start-ingestion');
+                
+                fileList.innerHTML = '';
+                for (let file of files) {
+                    const li = document.createElement('li');
+                    li.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+                    fileList.appendChild(li);
+                }
+                
+                selectedFiles.style.display = files.length > 0 ? 'block' : 'none';
+                startBtn.disabled = files.length === 0;
+                
+                // Store files for ingestion
+                this.selectedFiles = files;
+            }
+            
+            async startIngestion() {
+                if (!this.selectedFiles || this.selectedFiles.length === 0) return;
+                
+                this.ingestionInProgress = true;
+                this.updateIngestionUI(true);
+                
+                // Create AbortController for cancellation support
+                this.abortController = new AbortController();
+                
+                const formData = new FormData();
+                const mode = document.querySelector('input[name="ingestion-mode"]:checked').value;
+                formData.append('mode', mode);
+                
+                for (let file of this.selectedFiles) {
+                    formData.append('files', file);
+                }
+                
+                try {
+                    const response = await fetch('/api/ingest', {
+                        method: 'POST',
+                        body: formData,
+                        signal: this.abortController.signal
+                    });
+                    
+                    if (response.ok) {
+                        this.handleIngestionStream(response);
+                    } else {
+                        throw new Error('Ingestion failed');
+                    }
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        this.showNotification('Ingestion cancelled by user', 'warning');
+                    } else {
+                        console.error('Ingestion error:', error);
+                        this.showNotification('Ingestion failed: ' + error.message, 'error');
+                    }
+                    this.ingestionInProgress = false;
+                    this.updateIngestionUI(false);
+                } finally {
+                    this.abortController = null;
+                }
+            }
+            
+            async cancelIngestion() {
+                if (this.ingestionInProgress) {
+                    try {
+                        const response = await fetch('/api/ingest/cancel', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                ingestion_id: this.currentIngestionId || null
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            this.showNotification('Ingestion cancellation requested...', 'info');
+                        } else {
+                            this.showNotification('Failed to cancel ingestion: ' + data.error, 'warning');
+                        }
+                    } catch (error) {
+                        console.error('Failed to send cancellation request:', error);
+                        this.showNotification('Failed to cancel ingestion', 'error');
+                    }
+                    
+                    this.ingestionInProgress = false;
+                    this.updateIngestionUI(false);
+                    
+                    if (this.abortController) {
+                        this.abortController.abort();
+                        this.abortController = null;
+                    }
+                }
+            }
+            
+            async handleIngestionStream(response) {
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        
+                        const chunk = decoder.decode(value);
+                        const lines = chunk.split('\n');
+                        
+                        for (let line of lines) {
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const data = JSON.parse(line.slice(6));
+                                    this.handleIngestionUpdate(data);
+                                } catch (e) {
+                                    console.log('Progress:', line.slice(6));
+                                }
+                            }
+                        }
+                    }
+                } finally {
+                    reader.releaseLock();
+                }
+            }
+            
+            handleIngestionUpdate(data) {
+                const progressFill = document.getElementById('progress-fill');
+                const progressPercentage = document.getElementById('progress-percentage');
+                const progressDetails = document.getElementById('progress-details');
+                
+                if (data.ingestion_id && !this.currentIngestionId) {
+                    this.currentIngestionId = data.ingestion_id;
+                }
+                
+                if (data.type === 'progress') {
+                    let percent;
+                    if (data.progress !== undefined) {
+                        percent = Math.round(data.progress * 100);
+                    } else if (data.current !== undefined && data.total !== undefined) {
+                        percent = Math.round((data.current / data.total) * 100);
+                    } else {
+                        percent = 0;
+                    }
+                    
+                    progressFill.style.width = percent + '%';
+                    progressPercentage.textContent = percent + '%';
+                    progressDetails.textContent = data.message || '';
+                }
+                
+                if (data.type === 'completion') {
+                    this.handleIngestionComplete(data);
+                }
+                
+                if (data.type === 'cancelled') {
+                    this.handleIngestionCancelled(data);
+                }
+                
+                if (data.type === 'approval_ready') {
+                    setTimeout(() => {
+                        this.loadLatestEntities();
+                        this.loadFullEntities();
+                        this.loadStatistics();
+                    }, 1000);
+                }
+            }
+            
+            handleIngestionComplete(data) {
+                this.ingestionInProgress = false;
+                this.updateIngestionUI(false);
+                this.showNotification('Ingestion completed successfully!', 'success');
+                
+                setTimeout(() => {
+                    this.loadLatestEntities();
+                    this.loadFullEntities();
+                    this.loadStatistics();
+                    this.showNotification('Entities loaded for approval', 'info');
+                }, 2000);
+            }
+            
+            handleIngestionCancelled(data) {
+                this.ingestionInProgress = false;
+                this.updateIngestionUI(false);
+                this.showNotification('Ingestion was cancelled', 'warning');
+                this.currentIngestionId = null;
+                
+                const progressFill = document.getElementById('progress-fill');
+                const progressPercentage = document.getElementById('progress-percentage');
+                const progressDetails = document.getElementById('progress-details');
+                
+                progressFill.style.width = '0%';
+                progressPercentage.textContent = '0%';
+                progressDetails.textContent = 'Cancelled';
+            }
+            
+            updateIngestionUI(inProgress) {
+                const startBtn = document.getElementById('start-ingestion');
+                const cancelBtn = document.getElementById('cancel-ingestion');
+                const progressContainer = document.getElementById('ingestion-progress');
+                
+                startBtn.style.display = inProgress ? 'none' : 'block';
+                cancelBtn.style.display = inProgress ? 'block' : 'none';
+                progressContainer.style.display = inProgress ? 'block' : 'none';
+                
+                if (!inProgress) {
+                    document.getElementById('progress-fill').style.width = '0%';
+                    document.getElementById('progress-percentage').textContent = '0%';
+                    document.getElementById('progress-details').textContent = '';
+                }
+            }
+            
+            async loadLatestEntities() {
+                const entityTypeFilter = document.getElementById('entity-type-filter').value;
+                const statusFilter = document.getElementById('status-filter').value;
+                
+                const params = new URLSearchParams({
+                    limit: '10',
+                    status: statusFilter
+                });
+                
+                if (entityTypeFilter) {
+                    params.append('entity_types', entityTypeFilter);
+                }
+                
+                try {
+                    const response = await fetch(`/api/pre-approval/entities?${params}`);
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.displayQuickEntities(data.entities);
+                        document.getElementById('entity-count').textContent = `${data.entities.length} entities`;
+                    } else {
+                        console.error('Failed to load entities:', data.error);
+                    }
+                } catch (error) {
+                    console.error('Error loading entities:', error);
+                }
+            }
+            
+            async loadFullEntities() {
+                const entityTypeFilter = document.getElementById('entity-type-filter-main').value;
+                const statusFilter = document.getElementById('status-filter-main').value;
+                const searchTerm = document.getElementById('search-input').value;
+                
+                const params = new URLSearchParams({
+                    limit: '100',
+                    status: statusFilter === 'all' ? '' : statusFilter
+                });
+                
+                if (entityTypeFilter) {
+                    params.append('entity_types', entityTypeFilter);
+                }
+                
+                if (searchTerm) {
+                    params.append('search', searchTerm);
+                }
+                
+                try {
+                    const response = await fetch(`/api/pre-approval/entities?${params}`);
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.entities = data.entities;
+                        this.renderEntitiesTable();
+                        document.getElementById('entity-count-main').textContent = `${data.entities.length} entities`;
+                    } else {
+                        console.error('Failed to load entities:', data.error);
+                    }
+                } catch (error) {
+                    console.error('Error loading entities:', error);
+                }
+            }
+            
+            async loadStatistics() {
+                try {
+                    const response = await fetch('/api/pre-approval/statistics');
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        document.getElementById('total-entities').textContent = data.total || 0;
+                        document.getElementById('approved-count').textContent = data.approved || 0;
+                        document.getElementById('rejected-count').textContent = data.rejected || 0;
+                        document.getElementById('pending-count').textContent = data.pending || 0;
+                    }
+                } catch (error) {
+                    console.error('Error loading statistics:', error);
+                }
+            }
+            
+            displayQuickEntities(entities) {
+                const entityList = document.getElementById('entity-list');
+                
+                if (entities.length === 0) {
+                    entityList.innerHTML = `
+                        <div class="empty-state">
+                            <i class="fas fa-inbox"></i>
+                            <h3>No entities to review</h3>
+                            <p>Upload documents to see extracted entities here</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                entityList.innerHTML = entities.map(entity => {
+                    const properties = entity.properties || {};
+                    const displayProperties = this.extractDisplayProperties(properties);
+                    
+                    return `
+                        <div class="entity-item" data-entity-id="${entity.entity_id}">
+                            <div class="entity-info">
+                                <div class="entity-name">${entity.name}</div>
+                                <div class="entity-meta">
+                                    <span class="status-indicator status-${entity.status}">${entity.status}</span>
+                                    <span>${entity.entity_type}</span>
+                                    <span>Confidence: ${(entity.confidence * 100).toFixed(1)}%</span>
+                                </div>
+                            </div>
+                            <div class="entity-actions">
+                                ${entity.status === 'pending' ? `
+                                    <button class="btn-approve" onclick="dashboard.approveEntity('${entity.entity_id}')">
+                                        <i class="fas fa-check"></i> Approve
+                                    </button>
+                                    <button class="btn-reject" onclick="dashboard.rejectEntity('${entity.entity_id}')">
+                                        <i class="fas fa-times"></i> Reject
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            renderEntitiesTable() {
+                const tbody = document.getElementById('entities-tbody');
+                const noEntities = document.getElementById('no-entities');
+                
+                if (this.entities.length === 0) {
+                    tbody.innerHTML = '';
+                    noEntities.style.display = 'block';
+                    return;
+                }
+                
+                noEntities.style.display = 'none';
+                tbody.innerHTML = this.entities.map(entity => {
+                    const properties = entity.properties || {};
+                    const propertyCount = Object.keys(properties).length;
+                    
+                    return `
+                        <tr data-entity-id="${entity.entity_id}">
+                            <td class="select-col">
+                                <input type="checkbox" class="entity-checkbox" value="${entity.entity_id}">
+                            </td>
+                            <td class="type-col">${entity.entity_type}</td>
+                            <td class="name-col">
+                                <span class="entity-name" onclick="dashboard.showEntityDetails('${entity.entity_id}')">${entity.name}</span>
+                            </td>
+                            <td class="properties-col">
+                                <span class="property-count">${propertyCount} properties</span>
+                            </td>
+                            <td class="status-col">
+                                <span class="status-badge ${entity.status}">${entity.status}</span>
+                            </td>
+                            <td class="actions-col">
+                                ${entity.status === 'pending' ? `
+                                    <button class="btn small success" onclick="dashboard.approveEntity('${entity.entity_id}')">
+                                        <i class="fas fa-check"></i> Approve
+                                    </button>
+                                    <button class="btn small danger" onclick="dashboard.rejectEntity('${entity.entity_id}')">
+                                        <i class="fas fa-times"></i> Reject
+                                    </button>
+                                ` : ''}
+                                <button class="btn small secondary" onclick="dashboard.showEntityDetails('${entity.entity_id}')">
+                                    <i class="fas fa-eye"></i> View
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+            
+            extractDisplayProperties(properties) {
+                const displayProps = {};
+                const priorityKeys = ['position', 'occupation', 'title', 'role', 'summary', 'description', 'industry', 'location', 'nationality'];
+                
+                priorityKeys.forEach(key => {
+                    if (properties[key] && properties[key].trim()) {
+                        displayProps[key] = properties[key];
+                    }
+                });
+                
+                const skipKeys = new Set([
+                    'approval_status', 'needs_review', 'reviewer_id', 'review_timestamp', 
+                    'review_notes', 'extraction_timestamp', 'source_document', 'confidence_score',
+                    'name', 'entity_id', 'entity_type'
+                ]);
+                
+                Object.keys(properties).forEach(key => {
+                    if (!skipKeys.has(key) && !displayProps[key] && properties[key] && 
+                        typeof properties[key] === 'string' && properties[key].trim()) {
+                        displayProps[key] = properties[key];
+                    }
+                });
+                
+                return displayProps;
+            }
+            
+            async approveEntity(entityId) {
+                try {
+                    const response = await fetch(`/api/pre-approval/entities/${entityId}/approve`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            reviewer_id: 'user',
+                            review_notes: 'Approved via unified dashboard'
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        this.showNotification('Entity approved successfully', 'success');
+                        this.triggerAutoIngestion();
+                        this.refreshAllData();
+                    } else {
+                        this.showNotification('Failed to approve entity: ' + data.error, 'error');
+                    }
+                } catch (error) {
+                    this.showNotification('Error approving entity: ' + error.message, 'error');
+                }
+            }
+            
+            async rejectEntity(entityId) {
+                try {
+                    const response = await fetch(`/api/pre-approval/entities/${entityId}/reject`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            reviewer_id: 'user',
+                            review_notes: 'Rejected via unified dashboard'
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        this.showNotification('Entity rejected', 'success');
+                        this.refreshAllData();
+                    } else {
+                        this.showNotification('Failed to reject entity: ' + data.error, 'error');
+                    }
+                } catch (error) {
+                    this.showNotification('Error rejecting entity: ' + error.message, 'error');
+                }
+            }
+            
+            async handleApproveAll() {
+                if (!confirm('Are you sure you want to approve ALL pending entities? This action cannot be undone.')) {
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/api/pre-approval/entities/approve-all', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ reviewer_id: 'user', review_notes: 'Bulk approved via unified dashboard' })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        this.showNotification(`Successfully approved ${data.approved_count} entities`, 'success');
+                        this.triggerAutoIngestion();
+                        this.refreshAllData();
+                    } else {
+                        this.showNotification('Failed to approve all entities: ' + data.error, 'error');
+                    }
+                } catch (error) {
+                    this.showNotification('Error approving all entities: ' + error.message, 'error');
+                }
+            }
+            
+            async handleCleanPending() {
+                if (!confirm('Are you sure you want to clean ALL pending entities? This will permanently delete them and cannot be undone.')) {
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/api/pre-approval/entities/clean-pending', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        this.showNotification(`Successfully cleaned ${data.deleted_count} pending entities`, 'success');
+                        this.refreshAllData();
+                    } else {
+                        this.showNotification('Failed to clean pending entities: ' + data.error, 'error');
+                    }
+                } catch (error) {
+                    this.showNotification('Error cleaning pending entities: ' + error.message, 'error');
+                }
+            }
+            
+            async triggerAutoIngestion() {
+                try {
+                    await fetch('/api/neo4j-ingestion/auto-ingest', { method: 'POST' });
+                } catch (error) {
+                    console.warn('Auto-ingestion failed:', error);
+                }
+            }
+            
+            refreshAllData() {
+                this.loadLatestEntities();
+                this.loadFullEntities();
+                this.loadStatistics();
+            }
+            
+            startAutoRefresh() {
+                this.stopAutoRefresh();
+                this.autoRefreshInterval = setInterval(() => {
+                    if (!this.ingestionInProgress) {
+                        this.loadLatestEntities();
+                        this.loadStatistics();
+                    }
+                }, 10000);
+            }
+            
+            stopAutoRefresh() {
+                if (this.autoRefreshInterval) {
+                    clearInterval(this.autoRefreshInterval);
+                    this.autoRefreshInterval = null;
+                }
+            }
+            
+            showNotification(message, type = 'info') {
+                const notification = document.createElement('div');
+                notification.className = `notification notification-${type}`;
+                notification.textContent = message;
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    padding: 1rem 1.5rem;
+                    border-radius: 4px;
+                    color: white;
+                    font-weight: 500;
+                    z-index: 1000;
+                    max-width: 300px;
+                    background: ${type === 'success' ? '#27ae60' : type === 'error' ? '#e74c3c' : '#3498db'};
+                `;
+                
+                document.body.appendChild(notification);
+                
+                setTimeout(() => {
+                    notification.remove();
+                }, 5000);
+            }
+            
+            async cleanupDatabase(dbType) {
+                const confirmMsg = dbType === 'all' 
+                    ? 'Are you sure you want to clean ALL databases? This will delete ALL data including Neo4j nodes, relationships, and vector embeddings. This action cannot be undone.'
+                    : `Are you sure you want to clean the ${dbType} database? This action cannot be undone.`;
+                
+                if (!confirm(confirmMsg)) {
+                    return;
+                }
+                
+                try {
+                    this.showNotification(`Starting ${dbType} database cleanup...`, 'info');
+                    
+                    const response = await fetch(`/api/cleanup/${dbType}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ confirm: true })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.showNotification(`${dbType} database cleaned successfully!`, 'success');
+                        this.displayCleanupResult(data, dbType);
+                        setTimeout(() => this.refreshAllData(), 1000);
+                    } else {
+                        this.showNotification(`Failed to clean ${dbType} database: ${data.error}`, 'error');
+                        this.displayCleanupResult(data, dbType);
+                    }
+                } catch (error) {
+                    this.showNotification(`Error cleaning ${dbType} database: ${error.message}`, 'error');
+                }
+            }
+            
+            async showDatabaseStatus() {
+                try {
+                    const response = await fetch('/api/cleanup/status');
+                    const data = await response.json();
+                    
+                    this.displayDatabaseStatus(data);
+                } catch (error) {
+                    this.showNotification(`Error getting database status: ${error.message}`, 'error');
+                }
+            }
+            
+            displayCleanupResult(data, dbType) {
+                const statusDisplay = document.getElementById('cleanup-status-display');
+                const isSuccess = data.success;
+                
+                let content = `<h5>${dbType.toUpperCase()} Cleanup Result</h5>`;
+                
+                if (isSuccess) {
+                    if (dbType === 'all' && data.results) {
+                        content += '<ul>';
+                        if (data.results.neo4j && data.results.neo4j.success) {
+                            content += `<li>Neo4j: ${data.results.neo4j.nodes_deleted} nodes, ${data.results.neo4j.relationships_deleted} relationships deleted</li>`;
+                        }
+                        if (data.results.vector && data.results.vector.success) {
+                            content += `<li>Vector DB: ${data.results.vector.documents_deleted} documents deleted</li>`;
+                        }
+                        content += '</ul>';
+                    } else if (data.stats) {
+                        content += '<ul>';
+                        if (data.stats.nodes_deleted !== undefined) {
+                            content += `<li>Nodes deleted: ${data.stats.nodes_deleted}</li>`;
+                        }
+                        if (data.stats.relationships_deleted !== undefined) {
+                            content += `<li>Relationships deleted: ${data.stats.relationships_deleted}</li>`;
+                        }
+                        if (data.stats.documents_deleted !== undefined) {
+                            content += `<li>Documents deleted: ${data.stats.documents_deleted}</li>`;
+                        }
+                        content += '</ul>';
+                    }
+                } else {
+                    content += `<p>Error: ${data.error || 'Unknown error occurred'}</p>`;
+                }
+                
+                statusDisplay.innerHTML = content;
+                statusDisplay.className = `cleanup-status ${isSuccess ? 'success' : 'error'}`;
+                statusDisplay.style.display = 'block';
+                
+                setTimeout(() => {
+                    statusDisplay.style.display = 'none';
+                }, 10000);
+            }
+            
+            displayDatabaseStatus(data) {
+                const statusDisplay = document.getElementById('cleanup-status-display');
+                
+                let content = '<h5>Database Status</h5><ul>';
+                
+                if (data.neo4j && data.neo4j.available) {
+                    content += `<li><strong>Neo4j:</strong> ${data.neo4j.nodes} nodes, ${data.neo4j.relationships} relationships</li>`;
+                    if (data.neo4j.node_types && Object.keys(data.neo4j.node_types).length > 0) {
+                        content += '<li><strong>Node Types:</strong> ';
+                        const types = Object.entries(data.neo4j.node_types)
+                            .map(([type, count]) => `${type}(${count})`)
+                            .join(', ');
+                        content += types + '</li>';
+                    }
+                } else {
+                    content += '<li><strong>Neo4j:</strong> Not available</li>';
+                }
+                
+                if (data.vector && data.vector.available) {
+                    content += `<li><strong>Vector DB:</strong> ${data.vector.documents} documents</li>`;
+                } else {
+                    content += '<li><strong>Vector DB:</strong> Not available</li>';
+                }
+                
+                content += '</ul>';
+                
+                statusDisplay.innerHTML = content;
+                statusDisplay.className = 'cleanup-status';
+                statusDisplay.style.display = 'block';
+                
+                setTimeout(() => {
+                    statusDisplay.style.display = 'none';
+                }, 15000);
+            }
+            
+            toggleRelationships() {
+                const container = document.getElementById('relationships-container');
+                const btn = document.getElementById('toggle-relationships-btn');
+                
+                if (container.classList.contains('hidden')) {
+                    container.classList.remove('hidden');
+                    btn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Relationships';
+                    this.loadRelationships();
+                } else {
+                    container.classList.add('hidden');
+                    btn.innerHTML = '<i class="fas fa-eye"></i> Show Relationships';
+                }
+            }
+            
+            async loadRelationships() {
+                try {
+                    const response = await fetch('/api/pre-approval/relationships');
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.relationships = data.relationships;
+                        this.renderRelationshipsTable();
+                        document.getElementById('relationship-count').textContent = `${data.relationships.length} relationships`;
+                    }
+                } catch (error) {
+                    console.error('Error loading relationships:', error);
+                }
+            }
+            
+            renderRelationshipsTable() {
+                const tbody = document.getElementById('relationships-tbody');
+                
+                if (this.relationships.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">No relationships found</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = this.relationships.map(rel => `
+                    <tr data-relationship-id="${rel.relationship_id}">
+                        <td class="select-col">
+                            <input type="checkbox" class="relationship-checkbox" value="${rel.relationship_id}">
+                        </td>
+                        <td class="type-col">${rel.relationship_type}</td>
+                        <td class="source-col">${rel.source_entity}</td>
+                        <td class="target-col">${rel.target_entity}</td>
+                        <td class="properties-col">
+                            <span class="property-count">${Object.keys(rel.properties || {}).length} properties</span>
+                        </td>
+                        <td class="status-col">
+                            <span class="status-badge ${rel.status}">${rel.status}</span>
+                        </td>
+                        <td class="actions-col">
+                            ${rel.status === 'pending' ? `
+                                <button class="btn small success" onclick="dashboard.approveRelationship('${rel.relationship_id}')">
+                                    <i class="fas fa-check"></i> Approve
+                                </button>
+                                <button class="btn small danger" onclick="dashboard.rejectRelationship('${rel.relationship_id}')">
+                                    <i class="fas fa-times"></i> Reject
+                                </button>
+                            ` : ''}
+                        </td>
+                    </tr>
+                `).join('');
+            }
+            
+            async approveRelationship(relationshipId) {
+                try {
+                    const response = await fetch(`/api/pre-approval/relationships/${relationshipId}/approve`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            reviewer_id: 'user',
+                            review_notes: 'Approved via unified dashboard'
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        this.showNotification('Relationship approved successfully', 'success');
+                        this.triggerAutoIngestion();
+                        this.loadRelationships();
+                    } else {
+                        this.showNotification('Failed to approve relationship: ' + data.error, 'error');
+                    }
+                } catch (error) {
+                    this.showNotification('Error approving relationship: ' + error.message, 'error');
+                }
+            }
+            
+            async rejectRelationship(relationshipId) {
+                try {
+                    const response = await fetch(`/api/pre-approval/relationships/${relationshipId}/reject`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            reviewer_id: 'user',
+                            review_notes: 'Rejected via unified dashboard'
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        this.showNotification('Relationship rejected', 'success');
+                        this.loadRelationships();
+                    } else {
+                        this.showNotification('Failed to reject relationship: ' + data.error, 'error');
+                    }
+                } catch (error) {
+                    this.showNotification('Error rejecting relationship: ' + error.message, 'error');
+                }
+            }
+            
+            showEntityDetails(entityId) {
+                // Placeholder for entity details modal - implement as needed
+                console.log('Show entity details for:', entityId);
+            }
+        }
+        
+        // Initialize the unified dashboard
+        const dashboard = new UnifiedCombinedDashboard();
+        
+        // Make dashboard globally available for entity actions
+        window.dashboard = dashboard;
+    </script>
+</body>
+</html>

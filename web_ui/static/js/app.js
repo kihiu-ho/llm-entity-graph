@@ -34,7 +34,7 @@ class AgenticRAGUI {
         this.clearChatBtn = document.getElementById('clear-chat');
         this.exportChatBtn = document.getElementById('export-chat');
         this.settingsBtn = document.getElementById('settings-btn');
-        this.ingestionBtn = document.getElementById('ingestion-btn');
+        this.unifiedDashboardBtn = document.getElementById('unified-dashboard-btn');
 
         // Settings modal elements
         this.settingsModal = document.getElementById('settings-modal');
@@ -43,19 +43,6 @@ class AgenticRAGUI {
         this.loadSettingsBtn = document.getElementById('load-settings');
         this.testDbBtn = document.getElementById('test-db-connection');
         this.testLlmBtn = document.getElementById('test-llm-connection');
-
-        // Ingestion modal elements
-        this.ingestionModal = document.getElementById('ingestion-modal');
-        this.closeIngestionModal = document.getElementById('close-ingestion-modal');
-        this.uploadArea = document.getElementById('upload-area');
-        this.fileInput = document.getElementById('file-input');
-        this.browseFilesBtn = document.getElementById('browse-files');
-        this.startIngestionBtn = document.getElementById('start-ingestion');
-        this.cancelIngestionBtn = document.getElementById('cancel-ingestion');
-
-        // File management
-        this.selectedFiles = [];
-        this.isIngesting = false;
 
         // Toast container
         this.toastContainer = document.getElementById('toast-container');
@@ -87,7 +74,7 @@ class AgenticRAGUI {
         this.clearChatBtn.addEventListener('click', () => this.clearChat());
         this.exportChatBtn.addEventListener('click', () => this.exportChat());
         this.settingsBtn.addEventListener('click', () => this.openSettingsModal());
-        this.ingestionBtn.addEventListener('click', () => this.openIngestionModal());
+        this.unifiedDashboardBtn.addEventListener('click', () => this.openUnifiedDashboard());
 
         // Settings modal events
         this.closeSettingsModal.addEventListener('click', () => this.closeModal(this.settingsModal));
@@ -96,30 +83,8 @@ class AgenticRAGUI {
         this.testDbBtn.addEventListener('click', () => this.testDatabaseConnection());
         this.testLlmBtn.addEventListener('click', () => this.testLlmConnection());
 
-        // Ingestion modal events
-        this.closeIngestionModal.addEventListener('click', () => this.closeModal(this.ingestionModal));
-        this.browseFilesBtn.addEventListener('click', () => this.fileInput.click());
-        this.fileInput.addEventListener('change', (e) => this.handleFileSelection(e));
-        this.startIngestionBtn.addEventListener('click', () => this.startIngestion());
-        this.cancelIngestionBtn.addEventListener('click', () => this.cancelIngestion());
-
-        // Clear files button
-        document.addEventListener('click', (e) => {
-            if (e.target.id === 'clear-files' || e.target.closest('#clear-files')) {
-                this.clearSelectedFiles();
-            }
-        });
-
         // Graph visualization integration
         this.initializeGraphVisualization();
-
-        // Ingestion mode change events
-        document.querySelectorAll('input[name="ingestion-mode"]').forEach(radio => {
-            radio.addEventListener('change', () => this.handleModeChange());
-        });
-
-        // Upload area drag and drop
-        this.setupDragAndDrop();
 
         // Tab switching
         this.setupTabSwitching();
@@ -716,368 +681,11 @@ class AgenticRAGUI {
     }
 
     // Document Ingestion
-    openIngestionModal() {
-        this.ingestionModal.style.display = 'block';
-        this.resetIngestionForm();
-        this.handleModeChange(); // Initialize mode-specific UI
+    openUnifiedDashboard() {
+        // Redirect to the unified dashboard page
+        window.location.href = '/unified';
     }
 
-    resetIngestionForm() {
-        this.selectedFiles = [];
-        this.updateFileList();
-        this.hideIngestionProgress();
-        this.hideIngestionResults();
-        this.updateStartButtonState();
-        this.isIngesting = false;
-    }
-
-    handleModeChange() {
-        const selectedMode = document.querySelector('input[name="ingestion-mode"]:checked').value;
-
-        // Update button text based on mode
-        const modeTexts = {
-            'full': 'Start Full Processing',
-            'clean': 'Clean & Re-ingest All',
-            'fast': 'Start Fast Processing'
-        };
-
-        this.startIngestionBtn.innerHTML = `<i class="fas fa-play"></i> ${modeTexts[selectedMode]}`;
-
-        // Update button state
-        this.updateStartButtonState();
-    }
-
-    updateStartButtonState() {
-        // Always require files to be selected
-        this.startIngestionBtn.disabled = this.selectedFiles.length === 0;
-    }
-
-    clearSelectedFiles() {
-        this.selectedFiles = [];
-        this.updateFileList();
-        this.updateStartButtonState();
-        this.showToast('info', 'All files cleared');
-    }
-
-    setupDragAndDrop() {
-        this.uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            this.uploadArea.classList.add('dragover');
-        });
-
-        this.uploadArea.addEventListener('dragleave', (e) => {
-            e.preventDefault();
-            this.uploadArea.classList.remove('dragover');
-        });
-
-        this.uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            this.uploadArea.classList.remove('dragover');
-
-            const files = Array.from(e.dataTransfer.files);
-            this.addFiles(files);
-        });
-
-        this.uploadArea.addEventListener('click', () => {
-            this.fileInput.click();
-        });
-    }
-
-    handleFileSelection(event) {
-        const files = Array.from(event.target.files);
-        this.addFiles(files);
-
-        // Clear the input value to allow selecting the same files again
-        event.target.value = '';
-    }
-
-    addFiles(files) {
-        const validFiles = files.filter(file => {
-            const isValid = file.name.endsWith('.md') || file.name.endsWith('.txt');
-            if (!isValid) {
-                this.showToast('warning', `Skipped ${file.name}: Only .md and .txt files are supported`);
-            }
-            return isValid;
-        });
-
-        // Add new files, avoiding duplicates
-        validFiles.forEach(file => {
-            if (!this.selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
-                this.selectedFiles.push(file);
-            }
-        });
-
-        this.updateFileList();
-        this.updateStartButtonState();
-    }
-
-    updateFileList() {
-        const fileList = document.getElementById('file-list');
-        const selectedFilesList = document.getElementById('selected-files');
-
-        if (this.selectedFiles.length === 0) {
-            fileList.style.display = 'none';
-            return;
-        }
-
-        fileList.style.display = 'block';
-        selectedFilesList.innerHTML = this.selectedFiles.map((file, index) => `
-            <li>
-                <span>${file.name} (${this.formatFileSize(file.size)})</span>
-                <i class="fas fa-times file-remove" data-index="${index}"></i>
-            </li>
-        `).join('');
-
-        // Add remove file event listeners
-        selectedFilesList.querySelectorAll('.file-remove').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const index = parseInt(e.target.dataset.index);
-                this.selectedFiles.splice(index, 1);
-                this.updateFileList();
-                this.updateStartButtonState();
-            });
-        });
-    }
-
-    formatFileSize(bytes) {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
-    async startIngestion() {
-        const selectedMode = document.querySelector('input[name="ingestion-mode"]:checked').value;
-
-        // Validate files are selected
-        if (this.selectedFiles.length === 0) {
-            this.showToast('warning', 'Please select files to ingest');
-            return;
-        }
-
-        this.isIngesting = true;
-        this.startIngestionBtn.disabled = true;
-        this.startIngestionBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-        this.cancelIngestionBtn.style.display = 'inline-block';
-
-        this.showIngestionProgress();
-        this.updateProgress(0, 'Preparing ingestion...');
-
-        try {
-            // Create FormData with uploaded files
-            const formData = new FormData();
-            this.selectedFiles.forEach(file => {
-                formData.append('files', file);
-            });
-
-            // Enhanced ingestion configuration based on mode
-            const config = this.getIngestionConfig(selectedMode);
-            formData.append('config', JSON.stringify(config));
-
-            // Start ingestion
-            const response = await fetch('/api/ingest', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                throw new Error(`Ingestion failed: ${response.statusText}`);
-            }
-
-            // Handle streaming response
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-
-            while (true) {
-                const { done, value } = await reader.read();
-
-                if (done) break;
-
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        try {
-                            const data = JSON.parse(line.slice(6));
-                            this.handleIngestionProgress(data);
-                        } catch (e) {
-                            console.error('Failed to parse progress data:', e);
-                        }
-                    }
-                }
-
-                if (!this.isIngesting) {
-                    // Ingestion was cancelled
-                    reader.cancel();
-                    break;
-                }
-            }
-
-        } catch (error) {
-            console.error('Ingestion failed:', error);
-            this.showToast('error', `Ingestion failed: ${error.message}`);
-            this.updateProgress(0, 'Ingestion failed');
-        } finally {
-            this.isIngesting = false;
-            this.cancelIngestionBtn.style.display = 'none';
-
-            // Only reset if not completed successfully (completion handles its own reset)
-            if (!this.startIngestionBtn.innerHTML.includes('Completed')) {
-                this.resetIngestionUI();
-            }
-        }
-    }
-
-    handleIngestionProgress(data) {
-        if (data.type === 'progress') {
-            const percent = Math.round((data.current / data.total) * 100);
-            this.updateProgress(percent, data.message || `Processing ${data.current}/${data.total}...`);
-        } else if (data.type === 'complete') {
-            // Handle completion
-            this.showIngestionResults(data.details);
-            this.updateProgress(100, 'Ingestion completed');
-            this.showToast('success', data.message || 'Document ingestion completed successfully');
-
-            // Update button to show completion
-            this.startIngestionBtn.innerHTML = '<i class="fas fa-check"></i> Completed';
-            this.startIngestionBtn.disabled = false;
-
-            // Auto-close modal after showing results for a moment
-            setTimeout(() => {
-                this.closeModal(this.ingestionModal);
-                this.resetIngestionUI();
-            }, 3000); // Close after 3 seconds
-
-        } else if (data.type === 'result') {
-            // Legacy result handling
-            this.showIngestionResults(data.results);
-            this.updateProgress(100, 'Ingestion completed');
-            this.showToast('success', 'Document ingestion completed successfully');
-        } else if (data.type === 'error') {
-            this.showToast('error', `Ingestion error: ${data.message}`);
-            this.updateProgress(0, 'Ingestion failed');
-
-            // Reset button on error
-            this.resetIngestionUI();
-        } else if (data.type === 'warning') {
-            this.showToast('warning', data.message);
-        }
-    }
-
-    updateProgress(percent, message) {
-        const progressFill = document.getElementById('progress-fill');
-        const progressText = document.getElementById('progress-text');
-
-        progressFill.style.width = `${percent}%`;
-        progressText.textContent = `${percent}% - ${message}`;
-    }
-
-    showIngestionProgress() {
-        document.getElementById('ingestion-progress').style.display = 'block';
-    }
-
-    hideIngestionProgress() {
-        document.getElementById('ingestion-progress').style.display = 'none';
-    }
-
-    showIngestionResults(results) {
-        const resultsContainer = document.getElementById('ingestion-results');
-        const resultsContent = document.getElementById('results-content');
-
-        // Handle the actual data structure from the server
-        console.log('📊 Ingestion results received:', results);
-
-        // The results object contains the ingestion summary
-        resultsContent.innerHTML = `
-            <div class="result-item">
-                <h6>📁 Ingestion Summary</h6>
-                <div class="result-stats">
-                    <span class="status-success">✓ ${results.files_processed} files processed</span>
-                    <span class="status-success">✓ ${results.total_chunks} chunks created</span>
-                    <span class="status-success">✓ ${results.total_entities} entities extracted</span>
-                    <span>⏱ ${results.processing_time}</span>
-                </div>
-                <div class="result-details">
-                    <div><strong>Mode:</strong> ${results.mode}</div>
-                    <div><strong>Chunk Size:</strong> ${results.chunk_size}</div>
-                    <div><strong>Files:</strong> ${results.file_names.join(', ')}</div>
-                </div>
-            </div>
-        `;
-
-        resultsContainer.style.display = 'block';
-    }
-
-    hideIngestionResults() {
-        document.getElementById('ingestion-results').style.display = 'none';
-    }
-
-    getIngestionConfig(mode) {
-        // Base configuration from settings (if available)
-        const baseConfig = {
-            chunk_size: parseInt(document.getElementById('chunk-size')?.value) || 8000,
-            chunk_overlap: parseInt(document.getElementById('chunk-overlap')?.value) || 800,
-            extract_entities: document.getElementById('extract-entities')?.checked !== false,
-            clean_before_ingest: document.getElementById('clean-before-ingest')?.checked || false,
-            use_semantic: true,
-            verbose: false,
-            mode: mode
-        };
-
-        // Mode-specific overrides
-        switch (mode) {
-            case 'full':
-                return {
-                    ...baseConfig,
-                    mode: 'full'
-                };
-
-            case 'clean':
-                return {
-                    ...baseConfig,
-                    clean_before_ingest: true,
-                    mode: 'clean'
-                };
-
-            case 'fast':
-                return {
-                    ...baseConfig,
-                    chunk_size: 800,
-                    use_semantic: false,
-                    extract_entities: false,
-                    verbose: true,
-                    mode: 'fast'
-                };
-
-            default:
-                return baseConfig;
-        }
-    }
-
-    resetIngestionUI() {
-        // Reset button to original state based on selected mode
-        const selectedMode = document.querySelector('input[name="ingestion-mode"]:checked').value;
-        const modeTexts = {
-            'full': 'Start Full Processing',
-            'clean': 'Clean & Re-ingest All',
-            'fast': 'Start Fast Processing'
-        };
-
-        this.startIngestionBtn.innerHTML = `<i class="fas fa-play"></i> ${modeTexts[selectedMode]}`;
-        this.startIngestionBtn.disabled = this.selectedFiles.length === 0;
-        this.hideIngestionProgress();
-        this.hideIngestionResults();
-    }
-
-    cancelIngestion() {
-        this.isIngesting = false;
-        this.updateProgress(0, 'Ingestion cancelled');
-        this.showToast('warning', 'Ingestion cancelled');
-        this.resetIngestionUI();
-        this.cancelIngestionBtn.style.display = 'none';
-    }
 
     // Graph Visualization Integration
     initializeGraphVisualization() {
@@ -1442,5 +1050,9 @@ class AgenticRAGUI {
 
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
+    // Don't initialize on unified page - it has its own dashboard
+    if (window.preventAppJSInit) {
+        return;
+    }
     new AgenticRAGUI();
 });

@@ -55,8 +55,8 @@
                         <button id="settings-btn" class="action-btn">
                             <i class="fas fa-cog"></i> Settings
                         </button>
-                        <button id="ingestion-btn" class="action-btn">
-                            <i class="fas fa-upload"></i> Data Ingestion
+                        <button id="unified-dashboard-btn" class="action-btn">
+                            <i class="fas fa-sync-alt"></i> Unified Dashboard
                         </button>
                         <button id="clear-chat" class="action-btn">
                             <i class="fas fa-trash"></i> Clear Chat
@@ -211,103 +211,6 @@
                         </button>
                         <button id="load-settings" class="secondary-btn">
                             <i class="fas fa-download"></i> Load Current Settings
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Ingestion Modal -->
-        <div id="ingestion-modal" class="modal">
-            <div class="modal-content large-modal">
-                <div class="modal-header">
-                    <h3><i class="fas fa-upload"></i> Document Ingestion</h3>
-                    <button class="close-btn" id="close-ingestion-modal">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <div class="modal-body">
-                    <!-- Ingestion Mode Selection -->
-                    <div class="ingestion-section">
-                        <h4><i class="fas fa-cogs"></i> Ingestion Mode</h4>
-                        <div class="mode-selection">
-
-                            <div class="mode-option">
-                                <input type="radio" id="mode-full" name="ingestion-mode" value="full" checked>
-                                <label for="mode-full">
-                                    <strong>Full Processing</strong>
-                                    <span class="mode-description">Complete processing with entity extraction and knowledge graph building</span>
-                                    <code>python -m ingestion.ingest --extract-entities</code>
-                                </label>
-                            </div>
-                            <div class="mode-option">
-                                <input type="radio" id="mode-clean" name="ingestion-mode" value="clean">
-                                <label for="mode-clean">
-                                    <strong>Clean & Re-ingest</strong>
-                                    <span class="mode-description">Remove existing data and process uploaded files fresh</span>
-                                    <code>python -m ingestion.ingest --clean</code>
-                                </label>
-                            </div>
-                            <div class="mode-option">
-                                <input type="radio" id="mode-fast" name="ingestion-mode" value="fast">
-                                <label for="mode-fast">
-                                    <strong>Fast Processing</strong>
-                                    <span class="mode-description">Faster processing with smaller chunks, no knowledge graph</span>
-                                    <code>python -m ingestion.ingest --chunk-size 800 --no-semantic --verbose</code>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- File Upload Section -->
-                    <div class="ingestion-section" id="upload-section">
-                        <h4><i class="fas fa-upload"></i> Upload Files</h4>
-                        <div class="upload-info">
-                            <p><i class="fas fa-info-circle"></i> Upload Markdown (.md) or Text (.txt) files for processing</p>
-                        </div>
-                        <div class="upload-area" id="upload-area">
-                            <div class="upload-content">
-                                <i class="fas fa-cloud-upload-alt"></i>
-                                <p>Drag and drop files here or click to browse</p>
-                                <input type="file" id="file-input" multiple accept=".md,.txt,.markdown" style="display: none;">
-                                <button id="browse-files" class="secondary-btn">
-                                    <i class="fas fa-folder-open"></i> Browse Files
-                                </button>
-                            </div>
-                        </div>
-
-                        <div id="file-list" class="file-list" style="display: none;">
-                            <h5><i class="fas fa-list"></i> Selected Files:</h5>
-                            <ul id="selected-files"></ul>
-                            <div class="file-actions">
-                                <button id="clear-files" class="secondary-btn">
-                                    <i class="fas fa-trash"></i> Clear All
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="ingestion-section">
-                        <h4>Ingestion Progress</h4>
-                        <div id="ingestion-progress" class="progress-container" style="display: none;">
-                            <div class="progress-bar">
-                                <div id="progress-fill" class="progress-fill"></div>
-                            </div>
-                            <div id="progress-text" class="progress-text">0% - Preparing...</div>
-                        </div>
-
-                        <div id="ingestion-results" class="ingestion-results" style="display: none;">
-                            <h5>Ingestion Results:</h5>
-                            <div id="results-content"></div>
-                        </div>
-                    </div>
-
-                    <div class="modal-footer">
-                        <button id="start-ingestion" class="primary-btn" disabled>
-                            <i class="fas fa-play"></i> Start Ingestion
-                        </button>
-                        <button id="cancel-ingestion" class="secondary-btn" style="display: none;">
-                            <i class="fas fa-stop"></i> Cancel
                         </button>
                     </div>
                 </div>

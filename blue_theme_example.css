@@ -1,0 +1,68 @@
+/* Blue Theme Customization for Approval Dashboard */
+
+/* Header with blue gradient */
+.approval-header {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    color: white;
+    padding: 1rem 2rem;
+    border-radius: 10px;
+    margin-bottom: 2rem;
+    box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3);
+}
+
+/* Blue-themed buttons */
+.btn.success {
+    background-color: #00b894;
+    border-color: #00a085;
+}
+
+.btn.success:hover {
+    background-color: #00a085;
+    transform: translateY(-1px);
+}
+
+.btn.primary {
+    background-color: #0984e3;
+    border-color: #0672c7;
+}
+
+/* Blue progress indicator */
+.progress-indicator {
+    background: rgba(79, 172, 254, 0.2);
+    color: #0984e3;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: bold;
+    font-size: 1.1rem;
+    border: 1px solid rgba(79, 172, 254, 0.3);
+}
+
+/* Blue status badges */
+.status-badge.approved {
+    background-color: #00b894;
+    color: white;
+}
+
+.status-badge.pending {
+    background-color: #0984e3;
+    color: white;
+}
+
+/* Blue table headers */
+.review-table th {
+    background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+    color: white;
+}
+
+/* Blue notification accents */
+.notification.success {
+    border-left: 4px solid #00b894;
+    background-color: #d1f2eb;
+    color: #00695c;
+}
+
+.notification.info {
+    border-left: 4px solid #0984e3;
+    background-color: #e3f2fd;
+    color: #01579b;
+}

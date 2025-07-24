@@ -1,0 +1,140 @@
+INFO:__main__:✅ Approval system imported successfully
+🌐 Starting Web UI for Agentic RAG
+📡 API URL: http://localhost:8058
+🚀 Web UI URL: http://0.0.0.0:5001
+ * Serving Flask app 'app'
+ * Debug mode: on
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://192.168.1.71:5001
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug: * Restarting with stat
+INFO:__main__:✅ Approval system imported successfully
+WARNING:werkzeug: * Debugger is active!
+INFO:werkzeug: * Debugger PIN: 105-361-135
+INFO:__main__:✅ Pre-approval database singleton created (will initialize on first use)
+INFO:approval.pre_approval_db:✅ Pre-approval database tables created
+INFO:approval.pre_approval_db:✅ Pre-approval database initialized
+INFO:approval.pre_approval_db:📋 Retrieved 5 entities from pre-approval DB
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:02:41] "GET /api/pre-approval/entities?limit=5&status=pending HTTP/1.1" 200 -
+ERROR:__main__:❌ Error in async DB method get_statistics: cannot perform operation: another operation is in progress
+ERROR:__main__:❌ Failed to get pre-approval statistics: cannot perform operation: another operation is in progress
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:02:46] "[35m[1mGET /api/pre-approval/statistics HTTP/1.1[0m" 500 -
+ERROR:__main__:❌ Error in async DB method get_statistics: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval statistics: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:02:59] "[35m[1mGET /api/pre-approval/statistics HTTP/1.1[0m" 500 -
+ERROR:__main__:❌ Error in async DB method get_entities: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval entities: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:13] "[35m[1mGET /api/pre-approval/entities?limit=10&status=pending HTTP/1.1[0m" 500 -
+ERROR:asyncio:Future exception was never retrieved
+future: <Future finished exception=ConnectionDoesNotExistError('connection was closed in the middle of operation')>
+asyncpg.exceptions.ConnectionDoesNotExistError: connection was closed in the middle of operation
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:13] "GET /unified HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:52] "GET /unified HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:52] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:52] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:52] "[36mGET /static/css/approval.css HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:52] "[36mGET /static/js/app.js HTTP/1.1[0m" 304 -
+ERROR:__main__:❌ Error in async DB method get_entities: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval entities: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:52] "[35m[1mGET /api/pre-approval/entities?limit=10&status=pending HTTP/1.1[0m" 500 -
+ERROR:__main__:❌ Error in async DB method get_statistics: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval statistics: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:52] "[35m[1mGET /api/pre-approval/statistics HTTP/1.1[0m" 500 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:53] "GET /unified HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:53] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:53] "[36mGET /static/css/approval.css HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:53] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:53] "[36mGET /static/js/app.js HTTP/1.1[0m" 304 -
+ERROR:__main__:❌ Error in async DB method get_entities: Event loop is closed
+ERROR:__main__:❌ Error in async DB method get_statistics: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval entities: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:53] "[35m[1mGET /api/pre-approval/entities?limit=10&status=pending HTTP/1.1[0m" 500 -
+ERROR:__main__:❌ Failed to get pre-approval statistics: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:53] "[35m[1mGET /api/pre-approval/statistics HTTP/1.1[0m" 500 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "GET /unified HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[36mGET /static/css/approval.css HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[36mGET /static/js/app.js HTTP/1.1[0m" 304 -
+ERROR:__main__:❌ Error in async DB method get_entities: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval entities: Event loop is closed
+ERROR:__main__:❌ Error in async DB method get_statistics: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[35m[1mGET /api/pre-approval/entities?limit=10&status=pending HTTP/1.1[0m" 500 -
+ERROR:__main__:❌ Failed to get pre-approval statistics: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[35m[1mGET /api/pre-approval/statistics HTTP/1.1[0m" 500 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "GET /unified HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[36mGET /static/js/app.js HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[36mGET /static/css/approval.css HTTP/1.1[0m" 304 -
+ERROR:__main__:❌ Error in async DB method get_statistics: Event loop is closed
+ERROR:__main__:❌ Error in async DB method get_entities: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval statistics: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[35m[1mGET /api/pre-approval/statistics HTTP/1.1[0m" 500 -
+ERROR:__main__:❌ Failed to get pre-approval entities: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[35m[1mGET /api/pre-approval/entities?limit=10&status=pending HTTP/1.1[0m" 500 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "GET /unified HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[36mGET /static/css/approval.css HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[36mGET /static/js/app.js HTTP/1.1[0m" 304 -
+ERROR:__main__:❌ Error in async DB method get_entities: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval entities: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[35m[1mGET /api/pre-approval/entities?limit=10&status=pending HTTP/1.1[0m" 500 -
+ERROR:__main__:❌ Error in async DB method get_statistics: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval statistics: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:54] "[35m[1mGET /api/pre-approval/statistics HTTP/1.1[0m" 500 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "GET /unified HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[36mGET /static/js/app.js HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[36mGET /static/css/approval.css HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+ERROR:__main__:❌ Error in async DB method get_entities: Event loop is closed
+ERROR:__main__:❌ Error in async DB method get_statistics: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval entities: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[35m[1mGET /api/pre-approval/entities?limit=10&status=pending HTTP/1.1[0m" 500 -
+ERROR:__main__:❌ Failed to get pre-approval statistics: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[35m[1mGET /api/pre-approval/statistics HTTP/1.1[0m" 500 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "GET /unified HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[36mGET /static/js/app.js HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[36mGET /static/css/approval.css HTTP/1.1[0m" 304 -
+ERROR:__main__:❌ Error in async DB method get_statistics: Event loop is closed
+ERROR:__main__:❌ Error in async DB method get_entities: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval statistics: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval entities: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[35m[1mGET /api/pre-approval/statistics HTTP/1.1[0m" 500 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[35m[1mGET /api/pre-approval/entities?limit=10&status=pending HTTP/1.1[0m" 500 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "GET /unified HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[36mGET /static/js/app.js HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[36mGET /static/css/approval.css HTTP/1.1[0m" 304 -
+ERROR:__main__:❌ Error in async DB method get_entities: Event loop is closed
+ERROR:__main__:❌ Error in async DB method get_statistics: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval entities: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[35m[1mGET /api/pre-approval/entities?limit=10&status=pending HTTP/1.1[0m" 500 -
+ERROR:__main__:❌ Failed to get pre-approval statistics: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[35m[1mGET /api/pre-approval/statistics HTTP/1.1[0m" 500 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "GET /unified HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[36mGET /static/js/app.js HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[36mGET /static/css/approval.css HTTP/1.1[0m" 304 -
+ERROR:__main__:❌ Error in async DB method get_entities: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval entities: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[35m[1mGET /api/pre-approval/entities?limit=10&status=pending HTTP/1.1[0m" 500 -
+ERROR:__main__:❌ Error in async DB method get_statistics: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval statistics: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:03:55] "[35m[1mGET /api/pre-approval/statistics HTTP/1.1[0m" 500 -
+ERROR:__main__:❌ Error in async DB method get_entities: Event loop is closed
+ERROR:__main__:❌ Error in async DB method get_statistics: Event loop is closed
+ERROR:__main__:❌ Failed to get pre-approval entities: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:04:05] "[35m[1mGET /api/pre-approval/entities?limit=10&status=pending HTTP/1.1[0m" 500 -
+ERROR:__main__:❌ Failed to get pre-approval statistics: Event loop is closed
+INFO:werkzeug:127.0.0.1 - - [24/Jul/2025 21:04:05] "[35m[1mGET /api/pre-approval/statistics HTTP/1.1[0m" 500 -
+/opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/resource_tracker.py:301: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/mp-5sqraj2s'}
+  warnings.warn(

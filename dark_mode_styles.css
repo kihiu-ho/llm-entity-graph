@@ -1,0 +1,137 @@
+/* Dark Mode CSS Styles */
+/* Add this to web_ui/static/css/approval.css */
+
+/* Dark mode variables */
+:root {
+    --bg-light: #ffffff;
+    --bg-dark: #1a1a1a;
+    --text-light: #333333;
+    --text-dark: #e0e0e0;
+    --card-light: #ffffff;
+    --card-dark: #2d2d2d;
+    --border-light: #e1e5e9;
+    --border-dark: #404040;
+    --header-light: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --header-dark: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+}
+
+/* Dark mode styles */
+body[data-theme="dark"] {
+    background-color: var(--bg-dark);
+    color: var(--text-dark);
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+body[data-theme="dark"] .container {
+    background-color: var(--bg-dark);
+}
+
+body[data-theme="dark"] .approval-header {
+    background: var(--header-dark);
+}
+
+body[data-theme="dark"] .dashboard-section {
+    background-color: var(--card-dark);
+    border: 1px solid var(--border-dark);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+body[data-theme="dark"] .review-table {
+    background-color: var(--card-dark);
+    border: 1px solid var(--border-dark);
+}
+
+body[data-theme="dark"] .review-table th {
+    background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
+    color: var(--text-dark);
+    border-bottom: 1px solid var(--border-dark);
+}
+
+body[data-theme="dark"] .review-table td {
+    border-bottom: 1px solid var(--border-dark);
+    color: var(--text-dark);
+}
+
+body[data-theme="dark"] .review-table tbody tr:hover {
+    background-color: #404040;
+}
+
+body[data-theme="dark"] .btn {
+    border: 1px solid var(--border-dark);
+}
+
+body[data-theme="dark"] .btn.secondary {
+    background-color: #404040;
+    color: var(--text-dark);
+}
+
+body[data-theme="dark"] .btn.secondary:hover {
+    background-color: #4a4a4a;
+}
+
+body[data-theme="dark"] .modal-content {
+    background-color: var(--card-dark);
+    color: var(--text-dark);
+    border: 1px solid var(--border-dark);
+}
+
+body[data-theme="dark"] .panel {
+    background-color: var(--card-dark);
+    border: 1px solid var(--border-dark);
+}
+
+body[data-theme="dark"] input,
+body[data-theme="dark"] select,
+body[data-theme="dark"] textarea {
+    background-color: #404040;
+    color: var(--text-dark);
+    border: 1px solid var(--border-dark);
+}
+
+body[data-theme="dark"] input:focus,
+body[data-theme="dark"] select:focus,
+body[data-theme="dark"] textarea:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+body[data-theme="dark"] .status-badge {
+    border: 1px solid var(--border-dark);
+}
+
+body[data-theme="dark"] .notification {
+    background-color: var(--card-dark);
+    color: var(--text-dark);
+    border: 1px solid var(--border-dark);
+}
+
+body[data-theme="dark"] .stat-card {
+    background-color: var(--card-dark);
+    border: 1px solid var(--border-dark);
+}
+
+/* Dark mode toggle button */
+#dark-mode-toggle {
+    background: rgba(255,255,255,0.1);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 0.5rem;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 40px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#dark-mode-toggle:hover {
+    background: rgba(255,255,255,0.2);
+    transform: translateY(-1px);
+}
+
+/* Smooth transitions for all elements */
+* {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
