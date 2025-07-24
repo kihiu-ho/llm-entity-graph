@@ -242,6 +242,7 @@ class DocumentIngestionPipeline:
                     extract_ownership=True,
                     extract_transactions=True,
                     extract_personal_connections=True,
+                    extract_attitudes=True,  # Enable attitude extraction
                     use_llm=True,
                     use_llm_for_companies=True,  # Use LLM for companies
                     use_llm_for_technologies=True,  # Use LLM for technologies
@@ -250,7 +251,8 @@ class DocumentIngestionPipeline:
                     use_llm_for_corporate_roles=True,  # Use LLM for corporate roles
                     use_llm_for_ownership=True,  # Use LLM for ownership
                     use_llm_for_transactions=True,  # Use LLM for transactions
-                    use_llm_for_personal_connections=True  # Use LLM for personal connections
+                    use_llm_for_personal_connections=True,  # Use LLM for personal connections
+                    use_llm_for_attitudes=True  # Use LLM for attitude extraction
                 )
             except Exception as entity_error:
                 logger.error(f"Entity extraction failed: {entity_error}")

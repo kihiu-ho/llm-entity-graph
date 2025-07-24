@@ -533,74 +533,7 @@
                     </div>
                 </div>
                 
-                <!-- Quick Preview Panel -->
-                <div class="unified-panel">
-                    <div class="panel-header">
-                        <i class="fas fa-clipboard-check" style="color: #27ae60;"></i>
-                        <h2 class="panel-title">Quick Entity Preview</h2>
-                    </div>
-                    
-                    <div class="approval-section">
-                        <div class="auto-refresh">
-                            <input type="checkbox" id="auto-refresh-entities" checked>
-                            <label for="auto-refresh-entities">Auto-refresh entities</label>
-                            <span id="entity-count">0 entities</span>
-                        </div>
-                        
-                        <!-- Database Cleanup Controls -->
-                        <div class="cleanup-controls">
-                            <h4><i class="fas fa-broom"></i> Database Cleanup</h4>
-                            <div class="cleanup-buttons">
-                                <button id="cleanup-neo4j" class="cleanup-btn neo4j-btn">
-                                    <i class="fas fa-project-diagram"></i> Clean Neo4j
-                                </button>
-                                <button id="cleanup-vector" class="cleanup-btn vector-btn">
-                                    <i class="fas fa-database"></i> Clean Vector DB
-                                </button>
-                                <button id="cleanup-all" class="cleanup-btn all-btn">
-                                    <i class="fas fa-broom"></i> Clean All
-                                </button>
-                                <button id="cleanup-status" class="cleanup-btn status-btn">
-                                    <i class="fas fa-info-circle"></i> DB Status
-                                </button>
-                            </div>
-                            <div id="cleanup-status-display" class="cleanup-status" style="display: none;"></div>
-                        </div>
-                        
-                        <div class="filter-controls">
-                            <select id="entity-type-filter">
-                                <option value="">All Types</option>
-                                <option value="Person">Person</option>
-                                <option value="Company">Company</option>
-                            </select>
-                            <select id="status-filter">
-                                <option value="pending">Pending</option>
-                                <option value="approved">Approved</option>
-                                <option value="rejected">Rejected</option>
-                            </select>
-                            <button id="refresh-entities" class="secondary-btn">
-                                <i class="fas fa-sync"></i> Refresh
-                            </button>
-                        </div>
-                        
-                        <div id="entity-list" class="entity-list">
-                            <div class="empty-state">
-                                <i class="fas fa-inbox"></i>
-                                <h3>No entities to review</h3>
-                                <p>Upload documents to see extracted entities here</p>
-                            </div>
-                        </div>
-                        
-                        <div class="bulk-actions" style="display: none;">
-                            <button id="bulk-approve" class="btn-approve">
-                                <i class="fas fa-check"></i> Approve Selected
-                            </button>
-                            <button id="bulk-reject" class="btn-reject">
-                                <i class="fas fa-times"></i> Reject Selected
-                            </button>
-                        </div>
-                    </div>
-                </div>
+
             </div>
             
             <!-- Control Panel -->
@@ -620,6 +553,9 @@
                     </button>
                     <button id="refresh-data-btn" class="btn secondary">
                         <i class="fas fa-sync"></i> Refresh Data
+                    </button>
+                    <button id="test-ingestion-btn" class="btn info">
+                        <i class="fas fa-flask"></i> Test Auto-Ingestion
                     </button>
                 </div>
                 
@@ -791,7 +727,6 @@
                     search: ''
                 };
                 this.setupEventListeners();
-                this.loadLatestEntities();
                 this.startAutoRefresh();
                 this.loadStatistics();
             }
@@ -825,10 +760,7 @@
                 startBtn.addEventListener('click', () => this.startIngestion());
                 cancelBtn.addEventListener('click', () => this.cancelIngestion());
                 
-                // Approval controls
-                document.getElementById('refresh-entities').addEventListener('click', () => this.loadLatestEntities());
-                document.getElementById('entity-type-filter').addEventListener('change', () => this.loadLatestEntities());
-                document.getElementById('status-filter').addEventListener('change', () => this.loadLatestEntities());
+                // Approval controls (removed - Quick Entity Preview section removed)
                 
                 // Main control filters
                 document.getElementById('entity-type-filter-main').addEventListener('change', () => this.loadFullEntities());
@@ -839,34 +771,63 @@
                 document.getElementById('approve-all-btn').addEventListener('click', () => this.handleApproveAll());
                 document.getElementById('clean-pending-btn').addEventListener('click', () => this.handleCleanPending());
                 document.getElementById('refresh-data-btn').addEventListener('click', () => {
-                    this.loadLatestEntities();
                     this.loadFullEntities();
                     this.loadStatistics();
                 });
-                
-                // Auto-refresh toggle
-                document.getElementById('auto-refresh-entities').addEventListener('change', (e) => {
-                    if (e.target.checked) {
-                        this.startAutoRefresh();
-                    } else {
-                        this.stopAutoRefresh();
-                    }
+
+                document.getElementById('test-ingestion-btn').addEventListener('click', () => {
+                    this.triggerAutoIngestion();
                 });
                 
-                // Cleanup controls
-                document.getElementById('cleanup-neo4j').addEventListener('click', () => this.cleanupDatabase('neo4j'));
-                document.getElementById('cleanup-vector').addEventListener('click', () => this.cleanupDatabase('vector'));
-                document.getElementById('cleanup-all').addEventListener('click', () => this.cleanupDatabase('all'));
-                document.getElementById('cleanup-status').addEventListener('click', () => this.showDatabaseStatus());
+                // Auto-refresh toggle (removed - Quick Entity Preview section removed)
+
+                // Cleanup controls (removed - Quick Entity Preview section removed)
                 
                 // Navigation
                 document.getElementById('back-to-main').addEventListener('click', () => {
                     window.location.href = '/';
                 });
+
+                // Entity modal controls
+                document.getElementById('close-entity-modal').addEventListener('click', () => {
+                    document.getElementById('entity-modal').classList.add('hidden');
+                });
+
+                // Entity modal action buttons
+                document.getElementById('approve-entity-btn').addEventListener('click', () => {
+                    if (this.currentEntity) {
+                        this.approveEntity(this.currentEntity.entity_id);
+                        document.getElementById('entity-modal').classList.add('hidden');
+                    }
+                });
+
+                document.getElementById('reject-entity-btn').addEventListener('click', () => {
+                    if (this.currentEntity) {
+                        this.rejectEntity(this.currentEntity.entity_id);
+                        document.getElementById('entity-modal').classList.add('hidden');
+                    }
+                });
                 
                 // Relationships toggle
                 document.getElementById('toggle-relationships-btn').addEventListener('click', () => {
                     this.toggleRelationships();
+                });
+
+                // Bulk selection controls
+                document.getElementById('select-all-btn').addEventListener('click', () => {
+                    this.selectAllEntities();
+                });
+
+                document.getElementById('clear-selection-btn').addEventListener('click', () => {
+                    this.clearSelection();
+                });
+
+                document.getElementById('select-all-checkbox').addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        this.selectAllEntities();
+                    } else {
+                        this.clearSelection();
+                    }
                 });
             }
             
@@ -1029,7 +990,6 @@
                 
                 if (data.type === 'approval_ready') {
                     setTimeout(() => {
-                        this.loadLatestEntities();
                         this.loadFullEntities();
                         this.loadStatistics();
                     }, 1000);
@@ -1042,7 +1002,6 @@
                 this.showNotification('Ingestion completed successfully!', 'success');
                 
                 setTimeout(() => {
-                    this.loadLatestEntities();
                     this.loadFullEntities();
                     this.loadStatistics();
                     this.showNotification('Entities loaded for approval', 'info');
@@ -1080,33 +1039,7 @@
                 }
             }
             
-            async loadLatestEntities() {
-                const entityTypeFilter = document.getElementById('entity-type-filter').value;
-                const statusFilter = document.getElementById('status-filter').value;
-                
-                const params = new URLSearchParams({
-                    limit: '10',
-                    status: statusFilter
-                });
-                
-                if (entityTypeFilter) {
-                    params.append('entity_types', entityTypeFilter);
-                }
-                
-                try {
-                    const response = await fetch(`/api/pre-approval/entities?${params}`);
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        this.displayQuickEntities(data.entities);
-                        document.getElementById('entity-count').textContent = `${data.entities.length} entities`;
-                    } else {
-                        console.error('Failed to load entities:', data.error);
-                    }
-                } catch (error) {
-                    console.error('Error loading entities:', error);
-                }
-            }
+            // loadLatestEntities function removed - Quick Entity Preview section removed
             
             async loadFullEntities() {
                 const entityTypeFilter = document.getElementById('entity-type-filter-main').value;
@@ -1158,48 +1091,7 @@
                 }
             }
             
-            displayQuickEntities(entities) {
-                const entityList = document.getElementById('entity-list');
-                
-                if (entities.length === 0) {
-                    entityList.innerHTML = `
-                        <div class="empty-state">
-                            <i class="fas fa-inbox"></i>
-                            <h3>No entities to review</h3>
-                            <p>Upload documents to see extracted entities here</p>
-                        </div>
-                    `;
-                    return;
-                }
-                
-                entityList.innerHTML = entities.map(entity => {
-                    const properties = entity.properties || {};
-                    const displayProperties = this.extractDisplayProperties(properties);
-                    
-                    return `
-                        <div class="entity-item" data-entity-id="${entity.entity_id}">
-                            <div class="entity-info">
-                                <div class="entity-name">${entity.name}</div>
-                                <div class="entity-meta">
-                                    <span class="status-indicator status-${entity.status}">${entity.status}</span>
-                                    <span>${entity.entity_type}</span>
-                                    <span>Confidence: ${(entity.confidence * 100).toFixed(1)}%</span>
-                                </div>
-                            </div>
-                            <div class="entity-actions">
-                                ${entity.status === 'pending' ? `
-                                    <button class="btn-approve" onclick="dashboard.approveEntity('${entity.entity_id}')">
-                                        <i class="fas fa-check"></i> Approve
-                                    </button>
-                                    <button class="btn-reject" onclick="dashboard.rejectEntity('${entity.entity_id}')">
-                                        <i class="fas fa-times"></i> Reject
-                                    </button>
-                                ` : ''}
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-            }
+            // displayQuickEntities function removed - Quick Entity Preview section removed
             
             renderEntitiesTable() {
                 const tbody = document.getElementById('entities-tbody');
@@ -1215,11 +1107,12 @@
                 tbody.innerHTML = this.entities.map(entity => {
                     const properties = entity.properties || {};
                     const propertyCount = Object.keys(properties).length;
-                    
+                    const isSelected = this.selectedEntities.has(entity.entity_id);
+
                     return `
                         <tr data-entity-id="${entity.entity_id}">
                             <td class="select-col">
-                                <input type="checkbox" class="entity-checkbox" value="${entity.entity_id}">
+                                <input type="checkbox" class="entity-checkbox" value="${entity.entity_id}" ${isSelected ? 'checked' : ''}>
                             </td>
                             <td class="type-col">${entity.entity_type}</td>
                             <td class="name-col">
@@ -1247,6 +1140,43 @@
                         </tr>
                     `;
                 }).join('');
+
+                // Add event listeners to checkboxes
+                this.bindEntityCheckboxEvents();
+            }
+
+            bindEntityCheckboxEvents() {
+                document.querySelectorAll('.entity-checkbox').forEach(checkbox => {
+                    checkbox.addEventListener('change', (e) => {
+                        const entityId = e.target.value;
+                        if (e.target.checked) {
+                            this.selectedEntities.add(entityId);
+                        } else {
+                            this.selectedEntities.delete(entityId);
+                        }
+                        this.updateBulkActionButtons();
+                        this.updateSelectAllCheckbox();
+                    });
+                });
+            }
+
+            updateSelectAllCheckbox() {
+                const selectAllCheckbox = document.getElementById('select-all-checkbox');
+                if (selectAllCheckbox) {
+                    const totalEntities = this.entities.length;
+                    const selectedCount = this.selectedEntities.size;
+
+                    if (selectedCount === 0) {
+                        selectAllCheckbox.checked = false;
+                        selectAllCheckbox.indeterminate = false;
+                    } else if (selectedCount === totalEntities) {
+                        selectAllCheckbox.checked = true;
+                        selectAllCheckbox.indeterminate = false;
+                    } else {
+                        selectAllCheckbox.checked = false;
+                        selectAllCheckbox.indeterminate = true;
+                    }
+                }
             }
             
             extractDisplayProperties(properties) {
@@ -1290,11 +1220,25 @@
                     
                     const data = await response.json();
                     if (data.success) {
-                        this.showNotification('Entity approved successfully', 'success');
+                        // Update local entity status immediately
+                        const entity = this.entities.find(e => e.entity_id === entityId);
+                        if (entity) {
+                            entity.status = 'approved';
+                            entity.reviewed_at = new Date().toISOString();
+                        }
+
+                        if (data.fallback_mode) {
+                            this.showNotification('✅ Entity approved (fallback mode - limited functionality)', 'info');
+                        } else {
+                            this.showNotification('✅ Entity approved successfully', 'success');
+                        }
+
                         this.triggerAutoIngestion();
-                        this.refreshAllData();
+                        // Re-render the table to show updated status
+                        this.renderEntitiesTable();
+                        this.loadStatistics();
                     } else {
-                        this.showNotification('Failed to approve entity: ' + data.error, 'error');
+                        this.showNotification('❌ Failed to approve entity: ' + data.error, 'error');
                     }
                 } catch (error) {
                     this.showNotification('Error approving entity: ' + error.message, 'error');
@@ -1316,10 +1260,24 @@
                     
                     const data = await response.json();
                     if (data.success) {
-                        this.showNotification('Entity rejected', 'success');
-                        this.refreshAllData();
+                        // Update local entity status immediately
+                        const entity = this.entities.find(e => e.entity_id === entityId);
+                        if (entity) {
+                            entity.status = 'rejected';
+                            entity.reviewed_at = new Date().toISOString();
+                        }
+
+                        if (data.fallback_mode) {
+                            this.showNotification('✅ Entity rejected (fallback mode - limited functionality)', 'info');
+                        } else {
+                            this.showNotification('✅ Entity rejected successfully', 'success');
+                        }
+
+                        // Re-render the table to show updated status
+                        this.renderEntitiesTable();
+                        this.loadStatistics();
                     } else {
-                        this.showNotification('Failed to reject entity: ' + data.error, 'error');
+                        this.showNotification('❌ Failed to reject entity: ' + data.error, 'error');
                     }
                 } catch (error) {
                     this.showNotification('Error rejecting entity: ' + error.message, 'error');
@@ -1355,35 +1313,118 @@
                 if (!confirm('Are you sure you want to clean ALL pending entities? This will permanently delete them and cannot be undone.')) {
                     return;
                 }
-                
+
                 try {
                     const response = await fetch('/api/pre-approval/entities/clean-pending', {
-                        method: 'POST',
+                        method: 'DELETE',
                         headers: { 'Content-Type': 'application/json' }
                     });
-                    
+
                     const data = await response.json();
                     if (data.success) {
-                        this.showNotification(`Successfully cleaned ${data.deleted_count} pending entities`, 'success');
+                        if (data.fallback_mode) {
+                            this.showNotification('✅ Clean pending completed (fallback mode - limited functionality)', 'info');
+                        } else {
+                            this.showNotification(`✅ Successfully cleaned ${data.deleted_count} pending entities`, 'success');
+                        }
                         this.refreshAllData();
                     } else {
-                        this.showNotification('Failed to clean pending entities: ' + data.error, 'error');
+                        this.showNotification('❌ Failed to clean pending entities: ' + data.error, 'error');
                     }
                 } catch (error) {
                     this.showNotification('Error cleaning pending entities: ' + error.message, 'error');
                 }
             }
+
+            selectAllEntities() {
+                // Select all visible entities
+                this.selectedEntities.clear();
+                this.entities.forEach(entity => {
+                    this.selectedEntities.add(entity.entity_id);
+                });
+
+                // Update checkboxes
+                document.querySelectorAll('.entity-checkbox').forEach(checkbox => {
+                    checkbox.checked = true;
+                });
+
+                // Update select-all checkbox
+                const selectAllCheckbox = document.getElementById('select-all-checkbox');
+                if (selectAllCheckbox) {
+                    selectAllCheckbox.checked = true;
+                }
+
+                this.updateBulkActionButtons();
+                this.showNotification(`Selected ${this.selectedEntities.size} entities`, 'info');
+            }
+
+            clearSelection() {
+                // Clear all selections
+                this.selectedEntities.clear();
+
+                // Update checkboxes
+                document.querySelectorAll('.entity-checkbox').forEach(checkbox => {
+                    checkbox.checked = false;
+                });
+
+                // Update select-all checkbox
+                const selectAllCheckbox = document.getElementById('select-all-checkbox');
+                if (selectAllCheckbox) {
+                    selectAllCheckbox.checked = false;
+                }
+
+                this.updateBulkActionButtons();
+                this.showNotification('Selection cleared', 'info');
+            }
+
+            updateBulkActionButtons() {
+                const bulkApproveBtn = document.getElementById('bulk-approve-btn');
+                if (bulkApproveBtn) {
+                    bulkApproveBtn.disabled = this.selectedEntities.size === 0;
+                }
+            }
             
             async triggerAutoIngestion() {
                 try {
-                    await fetch('/api/neo4j-ingestion/auto-ingest', { method: 'POST' });
+                    console.log('🔄 Triggering auto-ingestion...');
+                    const response = await fetch('/api/pre-approval/ingest-approved', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        cache: 'no-cache'
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.result) {
+                            if (data.result.minimal_mode) {
+                                this.showNotification('⚠️ No ingestion systems available. Install dependencies to enable full functionality.', 'warning');
+                            } else if (data.result.fallback_mode) {
+                                this.showNotification('ℹ️ Using Graphiti ingestion system. Entities are ingested during document processing.', 'info');
+                            } else if (data.result.entities_ingested > 0) {
+                                this.showNotification(`✅ ${data.result.entities_ingested} entities successfully ingested into Neo4j`, 'success');
+                            } else {
+                                this.showNotification('ℹ️ No approved entities ready for ingestion', 'info');
+                            }
+                        } else {
+                            this.showNotification('ℹ️ Ingestion system ready', 'info');
+                        }
+                    } else {
+                        console.error('❌ Auto-ingestion failed with status:', response.status);
+                        const errorData = await response.json().catch(() => ({}));
+                        console.error('❌ Error data:', errorData);
+                        if (errorData.suggestion) {
+                            this.showNotification(`⚠️ ${errorData.error}. ${errorData.suggestion}`, 'warning');
+                        } else {
+                            this.showNotification(`❌ Auto-ingestion failed with status: ${response.status}`, 'error');
+                        }
+                    }
                 } catch (error) {
-                    console.warn('Auto-ingestion failed:', error);
+                    console.error('❌ Auto-ingestion failed with error:', error);
+                    this.showNotification('❌ Auto-ingestion failed. Check console for details.', 'error');
                 }
             }
             
             refreshAllData() {
-                this.loadLatestEntities();
                 this.loadFullEntities();
                 this.loadStatistics();
             }
@@ -1392,7 +1433,6 @@
                 this.stopAutoRefresh();
                 this.autoRefreshInterval = setInterval(() => {
                     if (!this.ingestionInProgress) {
-                        this.loadLatestEntities();
                         this.loadStatistics();
                     }
                 }, 10000);
@@ -1429,128 +1469,13 @@
                 }, 5000);
             }
             
-            async cleanupDatabase(dbType) {
-                const confirmMsg = dbType === 'all' 
-                    ? 'Are you sure you want to clean ALL databases? This will delete ALL data including Neo4j nodes, relationships, and vector embeddings. This action cannot be undone.'
-                    : `Are you sure you want to clean the ${dbType} database? This action cannot be undone.`;
-                
-                if (!confirm(confirmMsg)) {
-                    return;
-                }
-                
-                try {
-                    this.showNotification(`Starting ${dbType} database cleanup...`, 'info');
-                    
-                    const response = await fetch(`/api/cleanup/${dbType}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ confirm: true })
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        this.showNotification(`${dbType} database cleaned successfully!`, 'success');
-                        this.displayCleanupResult(data, dbType);
-                        setTimeout(() => this.refreshAllData(), 1000);
-                    } else {
-                        this.showNotification(`Failed to clean ${dbType} database: ${data.error}`, 'error');
-                        this.displayCleanupResult(data, dbType);
-                    }
-                } catch (error) {
-                    this.showNotification(`Error cleaning ${dbType} database: ${error.message}`, 'error');
-                }
-            }
+            // cleanupDatabase function removed - cleanup controls removed
             
-            async showDatabaseStatus() {
-                try {
-                    const response = await fetch('/api/cleanup/status');
-                    const data = await response.json();
-                    
-                    this.displayDatabaseStatus(data);
-                } catch (error) {
-                    this.showNotification(`Error getting database status: ${error.message}`, 'error');
-                }
-            }
+            // showDatabaseStatus function removed - cleanup controls removed
             
-            displayCleanupResult(data, dbType) {
-                const statusDisplay = document.getElementById('cleanup-status-display');
-                const isSuccess = data.success;
-                
-                let content = `<h5>${dbType.toUpperCase()} Cleanup Result</h5>`;
-                
-                if (isSuccess) {
-                    if (dbType === 'all' && data.results) {
-                        content += '<ul>';
-                        if (data.results.neo4j && data.results.neo4j.success) {
-                            content += `<li>Neo4j: ${data.results.neo4j.nodes_deleted} nodes, ${data.results.neo4j.relationships_deleted} relationships deleted</li>`;
-                        }
-                        if (data.results.vector && data.results.vector.success) {
-                            content += `<li>Vector DB: ${data.results.vector.documents_deleted} documents deleted</li>`;
-                        }
-                        content += '</ul>';
-                    } else if (data.stats) {
-                        content += '<ul>';
-                        if (data.stats.nodes_deleted !== undefined) {
-                            content += `<li>Nodes deleted: ${data.stats.nodes_deleted}</li>`;
-                        }
-                        if (data.stats.relationships_deleted !== undefined) {
-                            content += `<li>Relationships deleted: ${data.stats.relationships_deleted}</li>`;
-                        }
-                        if (data.stats.documents_deleted !== undefined) {
-                            content += `<li>Documents deleted: ${data.stats.documents_deleted}</li>`;
-                        }
-                        content += '</ul>';
-                    }
-                } else {
-                    content += `<p>Error: ${data.error || 'Unknown error occurred'}</p>`;
-                }
-                
-                statusDisplay.innerHTML = content;
-                statusDisplay.className = `cleanup-status ${isSuccess ? 'success' : 'error'}`;
-                statusDisplay.style.display = 'block';
-                
-                setTimeout(() => {
-                    statusDisplay.style.display = 'none';
-                }, 10000);
-            }
+            // displayCleanupResult function removed - cleanup controls removed
             
-            displayDatabaseStatus(data) {
-                const statusDisplay = document.getElementById('cleanup-status-display');
-                
-                let content = '<h5>Database Status</h5><ul>';
-                
-                if (data.neo4j && data.neo4j.available) {
-                    content += `<li><strong>Neo4j:</strong> ${data.neo4j.nodes} nodes, ${data.neo4j.relationships} relationships</li>`;
-                    if (data.neo4j.node_types && Object.keys(data.neo4j.node_types).length > 0) {
-                        content += '<li><strong>Node Types:</strong> ';
-                        const types = Object.entries(data.neo4j.node_types)
-                            .map(([type, count]) => `${type}(${count})`)
-                            .join(', ');
-                        content += types + '</li>';
-                    }
-                } else {
-                    content += '<li><strong>Neo4j:</strong> Not available</li>';
-                }
-                
-                if (data.vector && data.vector.available) {
-                    content += `<li><strong>Vector DB:</strong> ${data.vector.documents} documents</li>`;
-                } else {
-                    content += '<li><strong>Vector DB:</strong> Not available</li>';
-                }
-                
-                content += '</ul>';
-                
-                statusDisplay.innerHTML = content;
-                statusDisplay.className = 'cleanup-status';
-                statusDisplay.style.display = 'block';
-                
-                setTimeout(() => {
-                    statusDisplay.style.display = 'none';
-                }, 15000);
-            }
+            // displayDatabaseStatus function removed - cleanup controls removed
             
             toggleRelationships() {
                 const container = document.getElementById('relationships-container');
@@ -1574,7 +1499,14 @@
                     if (data.success) {
                         this.relationships = data.relationships;
                         this.renderRelationshipsTable();
-                        document.getElementById('relationship-count').textContent = `${data.relationships.length} relationships`;
+                        const countText = data.fallback_mode ?
+                            `${data.relationships.length} relationships (fallback mode)` :
+                            `${data.relationships.length} relationships`;
+                        document.getElementById('relationship-count').textContent = countText;
+
+                        if (data.fallback_mode && data.relationships.length === 0) {
+                            console.info('ℹ️ Pre-approval system not available - no relationships to review');
+                        }
                     }
                 } catch (error) {
                     console.error('Error loading relationships:', error);
@@ -1630,11 +1562,15 @@
                     
                     const data = await response.json();
                     if (data.success) {
-                        this.showNotification('Relationship approved successfully', 'success');
+                        if (data.fallback_mode) {
+                            this.showNotification('✅ Relationship approved (fallback mode - limited functionality)', 'info');
+                        } else {
+                            this.showNotification('✅ Relationship approved successfully', 'success');
+                        }
                         this.triggerAutoIngestion();
                         this.loadRelationships();
                     } else {
-                        this.showNotification('Failed to approve relationship: ' + data.error, 'error');
+                        this.showNotification('❌ Failed to approve relationship: ' + data.error, 'error');
                     }
                 } catch (error) {
                     this.showNotification('Error approving relationship: ' + error.message, 'error');
@@ -1654,19 +1590,70 @@
                     
                     const data = await response.json();
                     if (data.success) {
-                        this.showNotification('Relationship rejected', 'success');
+                        if (data.fallback_mode) {
+                            this.showNotification('✅ Relationship rejected (fallback mode - limited functionality)', 'info');
+                        } else {
+                            this.showNotification('✅ Relationship rejected successfully', 'success');
+                        }
                         this.loadRelationships();
                     } else {
-                        this.showNotification('Failed to reject relationship: ' + data.error, 'error');
+                        this.showNotification('❌ Failed to reject relationship: ' + data.error, 'error');
                     }
                 } catch (error) {
                     this.showNotification('Error rejecting relationship: ' + error.message, 'error');
                 }
             }
             
-            showEntityDetails(entityId) {
-                // Placeholder for entity details modal - implement as needed
-                console.log('Show entity details for:', entityId);
+            async showEntityDetails(entityId) {
+                try {
+                    // Find the entity in our current data
+                    const entity = this.entities.find(e => e.entity_id === entityId);
+                    if (!entity) {
+                        this.showNotification('Entity not found', 'error');
+                        return;
+                    }
+
+                    // Store current entity for modal buttons
+                    this.currentEntity = entity;
+
+                    // Populate entity details
+                    const entityDetailsDiv = document.getElementById('entity-details');
+                    const properties = entity.properties || {};
+                    const displayProperties = this.extractDisplayProperties(properties);
+
+                    entityDetailsDiv.innerHTML = `
+                        <div class="entity-info-detailed">
+                            <h4>${entity.name}</h4>
+                            <div class="entity-meta-detailed">
+                                <span class="status-indicator status-${entity.status}">${entity.status}</span>
+                                <span class="entity-type-badge">${entity.entity_type}</span>
+                                <span class="confidence-score">Confidence: ${(entity.confidence * 100).toFixed(1)}%</span>
+                            </div>
+                            <div class="entity-properties">
+                                <h5>Properties:</h5>
+                                ${displayProperties.length > 0 ?
+                                    displayProperties.map(prop => `
+                                        <div class="property-item">
+                                            <strong>${prop.key}:</strong> ${prop.value}
+                                        </div>
+                                    `).join('') :
+                                    '<p class="no-properties">No additional properties</p>'
+                                }
+                            </div>
+                            <div class="entity-timestamps">
+                                <small>Created: ${new Date(entity.created_at).toLocaleString()}</small>
+                                ${entity.reviewed_at ? `<br><small>Reviewed: ${new Date(entity.reviewed_at).toLocaleString()}</small>` : ''}
+                            </div>
+                        </div>
+                    `;
+
+                    // Show the modal
+                    document.getElementById('entity-modal').classList.remove('hidden');
+
+                } catch (error) {
+                    console.error('Error showing entity details:', error);
+                    this.showNotification('Error loading entity details', 'error');
+                }
             }
         }
         

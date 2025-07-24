@@ -20,3 +20,6 @@
 */.dockerfile
 .pycache
 */.docker-compose.yml
+.pyc
+*pyc
+*__pycache__

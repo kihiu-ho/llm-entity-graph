@@ -540,6 +540,7 @@ class GraphBuilder:
         extract_ownership: bool = True,
         extract_transactions: bool = True,
         extract_personal_connections: bool = True,
+        extract_attitudes: bool = True,
         use_llm: bool = True,
         use_llm_for_companies: bool = False,
         use_llm_for_technologies: bool = False,
@@ -548,7 +549,8 @@ class GraphBuilder:
         use_llm_for_corporate_roles: bool = True,
         use_llm_for_ownership: bool = False,
         use_llm_for_transactions: bool = False,
-        use_llm_for_personal_connections: bool = False
+        use_llm_for_personal_connections: bool = False,
+        use_llm_for_attitudes: bool = True
     ) -> List[DocumentChunk]:
         """
         Extract entities from the entire document content (all chunks combined) using LLM.
@@ -620,6 +622,13 @@ class GraphBuilder:
                 "alma_mater": [],
                 "other_connections": []
             },
+            "attitudes": {
+                "positive_attitudes": [],
+                "negative_attitudes": [],
+                "neutral_attitudes": [],
+                "emotional_expressions": [],
+                "stakeholder_sentiments": []
+            },
             "network_entities": []
         }
 
@@ -650,7 +659,8 @@ class GraphBuilder:
                         extract_corporate_roles=extract_corporate_roles and use_llm_for_corporate_roles,
                         extract_ownership=extract_ownership and use_llm_for_ownership,
                         extract_transactions=extract_transactions and use_llm_for_transactions,
-                        extract_personal_connections=extract_personal_connections and use_llm_for_personal_connections
+                        extract_personal_connections=extract_personal_connections and use_llm_for_personal_connections,
+                        extract_attitudes=extract_attitudes and use_llm_for_attitudes
                     )
                 else:
                     llm_entities = await self._extract_entities_with_llm(
@@ -662,7 +672,8 @@ class GraphBuilder:
                         extract_corporate_roles=extract_corporate_roles and use_llm_for_corporate_roles,
                         extract_ownership=extract_ownership and use_llm_for_ownership,
                         extract_transactions=extract_transactions and use_llm_for_transactions,
-                        extract_personal_connections=extract_personal_connections and use_llm_for_personal_connections
+                        extract_personal_connections=extract_personal_connections and use_llm_for_personal_connections,
+                        extract_attitudes=extract_attitudes and use_llm_for_attitudes
                     )
 
                 logger.debug(f"LLM extraction completed for entire document")
@@ -837,6 +848,13 @@ class GraphBuilder:
                     "alma_mater": [],
                     "other_connections": []
                 },
+                "attitudes": {
+                    "positive_attitudes": [],
+                    "negative_attitudes": [],
+                    "neutral_attitudes": [],
+                    "emotional_expressions": [],
+                    "stakeholder_sentiments": []
+                },
                 "network_entities": []
             }
 
@@ -858,7 +876,8 @@ class GraphBuilder:
                         extract_corporate_roles=extract_corporate_roles and use_llm_for_corporate_roles,
                         extract_ownership=extract_ownership and use_llm_for_ownership,
                         extract_transactions=extract_transactions and use_llm_for_transactions,
-                        extract_personal_connections=extract_personal_connections and use_llm_for_personal_connections
+                        extract_personal_connections=extract_personal_connections and use_llm_for_personal_connections,
+                        extract_attitudes=extract_attitudes and use_llm_for_attitudes
                     )
 
                     logger.debug(f"LLM extraction completed for chunk {chunk.index}")
@@ -930,7 +949,8 @@ class GraphBuilder:
         extract_corporate_roles: bool = True,
         extract_ownership: bool = True,
         extract_transactions: bool = True,
-        extract_personal_connections: bool = True
+        extract_personal_connections: bool = True,
+        extract_attitudes: bool = True
     ) -> Dict[str, Any]:
         """
         Extract entities using LLM with structured prompts.
@@ -955,6 +975,7 @@ class GraphBuilder:
         if extract_ownership: requested_types.append("ownership")
         if extract_transactions: requested_types.append("transactions")
         if extract_personal_connections: requested_types.append("personal_connections")
+        if extract_attitudes: requested_types.append("attitudes")
 
         logger.info(f"Starting LLM entity extraction for types: {requested_types}")
         logger.debug(f"Text content length: {len(text)} characters")
@@ -973,7 +994,8 @@ class GraphBuilder:
             extract_corporate_roles=extract_corporate_roles,
             extract_ownership=extract_ownership,
             extract_transactions=extract_transactions,
-            extract_personal_connections=extract_personal_connections
+            extract_personal_connections=extract_personal_connections,
+            extract_attitudes=extract_attitudes
         )
 
         try:
@@ -1311,6 +1333,13 @@ class GraphBuilder:
                 "alma_mater": [],
                 "other_connections": []
             },
+            "attitudes": {
+                "positive_attitudes": [],
+                "negative_attitudes": [],
+                "neutral_attitudes": [],
+                "emotional_expressions": [],
+                "stakeholder_sentiments": []
+            },
             "network_entities": []
         }
 
@@ -1581,7 +1610,8 @@ class GraphBuilder:
         extract_corporate_roles: bool = True,
         extract_ownership: bool = True,
         extract_transactions: bool = True,
-        extract_personal_connections: bool = True
+        extract_personal_connections: bool = True,
+        extract_attitudes: bool = True
     ) -> str:
         """
         Create a structured prompt for LLM entity extraction.
@@ -1857,6 +1887,33 @@ EXAMPLES OF ORGANIZATIONAL CONNECTIONS:
 """
             requested_categories.append("personal_connections")
 
+        if extract_attitudes:
+            prompt += """
+ATTITUDES: Extract attitudes, sentiments, opinions, and emotional expressions from the text.
+- positive_attitudes: Positive opinions, praise, approval, satisfaction, optimism
+- negative_attitudes: Negative opinions, criticism, disapproval, concerns, pessimism
+- neutral_attitudes: Neutral statements, factual observations, balanced views
+- emotional_expressions: Strong emotional language, excitement, frustration, enthusiasm
+- stakeholder_sentiments: Attitudes expressed by or towards specific stakeholders
+
+ATTITUDE EXTRACTION GUIDELINES:
+- Look for subjective language, opinion markers, evaluative statements
+- Identify sentiment-bearing words and phrases (excellent, disappointing, promising, concerning)
+- Extract opinions about companies, people, policies, or events
+- Include both explicit opinions ("I believe this is excellent") and implicit attitudes (tone, word choice)
+- Capture stakeholder perspectives and viewpoints
+- Note emotional language and intensity markers
+
+EXAMPLES OF ATTITUDES TO EXTRACT:
+- "The company's performance has been outstanding this quarter"
+- "There are serious concerns about the new regulatory framework"
+- "We are optimistic about future growth prospects"
+- "The board expressed disappointment with the results"
+- "Stakeholders remain confident in the leadership team"
+- "The market reaction was overwhelmingly positive"
+"""
+            requested_categories.append("attitudes")
+
         # Always include network entities and locations as they are basic
         prompt += """
 LOCATIONS: Extract location names, cities, countries, and geographical references.
@@ -1920,6 +1977,15 @@ Return a valid JSON object with ONLY the categories that were requested above. "
         "career_overlaps": ["overlap1"],
         "alma_mater": ["school1"],
         "other_connections": ["connection1"]
+    },\n'''
+
+        if "attitudes" in requested_categories:
+            json_structure += '''    "attitudes": {
+        "positive_attitudes": ["positive statement 1", "positive statement 2"],
+        "negative_attitudes": ["negative statement 1", "negative statement 2"],
+        "neutral_attitudes": ["neutral statement 1", "neutral statement 2"],
+        "emotional_expressions": ["emotional expression 1", "emotional expression 2"],
+        "stakeholder_sentiments": ["stakeholder sentiment 1", "stakeholder sentiment 2"]
     },\n'''
 
         # Always include network entities
@@ -2034,6 +2100,7 @@ async def main():
         extract_ownership=True,
         extract_transactions=True,
         extract_personal_connections=True,
+        extract_attitudes=True,
         use_llm=True,
         use_llm_for_companies=True,
         use_llm_for_technologies=False,
@@ -2042,7 +2109,8 @@ async def main():
         use_llm_for_corporate_roles=True,
         use_llm_for_ownership=True,
         use_llm_for_transactions=True,
-        use_llm_for_personal_connections=True
+        use_llm_for_personal_connections=True,
+        use_llm_for_attitudes=True
     )
 
     # Print results
