@@ -313,18 +313,43 @@ class DocumentIngestionPipeline:
 
         if not self.config.skip_graph_building:
             try:
-                logger.info("Building knowledge graph relationships (this may take several minutes)...")
-                graph_result = await self.graph_builder.add_document_to_graph(
-                    chunks=embedded_chunks,
-                    document_title=document_title,
-                    document_source=document_source,
-                    document_metadata=document_metadata
-                )
+                # Use staging by default for entity extraction and review
+                use_staging = getattr(self.config, 'use_entity_staging', True)
 
-                relationships_created = graph_result.get("episodes_created", 0)
-                graph_errors = graph_result.get("errors", [])
+                if use_staging:
+                    logger.info("Extracting entities and staging for review...")
+                    graph_result = await self.graph_builder.stage_document_entities(
+                        chunks=embedded_chunks,
+                        document_title=document_title,
+                        document_source=document_source,
+                        document_metadata=document_metadata,
+                        use_staging=True
+                    )
 
-                logger.info(f"Added {relationships_created} episodes to knowledge graph")
+                    session_id = graph_result.get("session_id")
+                    entities_extracted = graph_result.get("entities_extracted", 0)
+                    relationships_extracted = graph_result.get("relationships_extracted", 0)
+
+                    logger.info(f"Extracted {entities_extracted} entities and {relationships_extracted} relationships")
+                    logger.info(f"Staging session created: {session_id}")
+                    logger.info("🔍 Review entities at: /entity-review")
+
+                    # Set relationships_created for compatibility
+                    relationships_created = entities_extracted + relationships_extracted
+
+                else:
+                    logger.info("Building knowledge graph relationships (this may take several minutes)...")
+                    graph_result = await self.graph_builder.add_document_to_graph(
+                        chunks=embedded_chunks,
+                        document_title=document_title,
+                        document_source=document_source,
+                        document_metadata=document_metadata
+                    )
+
+                    relationships_created = graph_result.get("episodes_created", 0)
+                    graph_errors = graph_result.get("errors", [])
+
+                    logger.info(f"Added {relationships_created} episodes to knowledge graph")
 
                 # Clean up Entity labels after graph building
                 try:

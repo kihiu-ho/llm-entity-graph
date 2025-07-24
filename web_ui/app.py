@@ -3748,6 +3748,1161 @@ def find_node_id_by_name(nodes: list, name: str) -> str:
             return node.get('id')
     return None
 
+# Enhanced Entity Management API Endpoints
+
+@app.route('/api/staging/sessions/enhanced', methods=['GET'])
+def get_enhanced_sessions():
+    """Get all staging sessions with enhanced filtering."""
+    try:
+        status_filter = request.args.get('status')
+        workflow_stage_filter = request.args.get('workflow_stage')
+
+        # Import here to avoid circular imports
+        from services.enhanced_staging_service import enhanced_staging_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            sessions = loop.run_until_complete(
+                enhanced_staging_service.get_all_sessions(status_filter, workflow_stage_filter)
+            )
+            return jsonify({"success": True, "sessions": sessions})
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error getting enhanced sessions: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/staging/sessions/<session_id>/enhanced', methods=['GET'])
+def get_enhanced_session(session_id):
+    """Get detailed session information."""
+    try:
+        from services.enhanced_staging_service import enhanced_staging_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            session = loop.run_until_complete(enhanced_staging_service.get_session(session_id))
+            if session:
+                return jsonify({"success": True, "session": session.to_dict()})
+            else:
+                return jsonify({"success": False, "error": "Session not found"}), 404
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error getting enhanced session {session_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/staging/sessions/<session_id>/entities/enhanced', methods=['GET'])
+def get_enhanced_entities(session_id):
+    """Get entities with enhanced filtering and search."""
+    try:
+        status_filter = request.args.get('status')
+        type_filter = request.args.get('type')
+        search_query = request.args.get('search')
+
+        from services.enhanced_staging_service import enhanced_staging_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            entities = loop.run_until_complete(
+                enhanced_staging_service.get_entities(session_id, status_filter, type_filter, search_query)
+            )
+            return jsonify({"success": True, "entities": entities})
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error getting enhanced entities for session {session_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/staging/sessions/<session_id>/relationships/enhanced', methods=['GET'])
+def get_enhanced_relationships(session_id):
+    """Get relationships with enhanced filtering."""
+    try:
+        status_filter = request.args.get('status')
+        type_filter = request.args.get('type')
+
+        from services.enhanced_staging_service import enhanced_staging_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            relationships = loop.run_until_complete(
+                enhanced_staging_service.get_relationships(session_id, status_filter, type_filter)
+            )
+            return jsonify({"success": True, "relationships": relationships})
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error getting enhanced relationships for session {session_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/staging/entities/<entity_id>', methods=['PUT'])
+def update_enhanced_entity(entity_id):
+    """Update an entity with audit trail."""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        updates = data.get('updates', {})
+        user = data.get('user', 'web_user')
+        comment = data.get('comment')
+
+        if not session_id:
+            return jsonify({"success": False, "error": "session_id is required"}), 400
+
+        from services.enhanced_staging_service import enhanced_staging_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            success = loop.run_until_complete(
+                enhanced_staging_service.update_entity(session_id, entity_id, updates, user, comment)
+            )
+            if success:
+                return jsonify({"success": True, "message": "Entity updated successfully"})
+            else:
+                return jsonify({"success": False, "error": "Failed to update entity"}), 400
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error updating entity {entity_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/staging/relationships/<relationship_id>', methods=['PUT'])
+def update_enhanced_relationship(relationship_id):
+    """Update a relationship with audit trail."""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        updates = data.get('updates', {})
+        user = data.get('user', 'web_user')
+        comment = data.get('comment')
+
+        if not session_id:
+            return jsonify({"success": False, "error": "session_id is required"}), 400
+
+        from services.enhanced_staging_service import enhanced_staging_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            success = loop.run_until_complete(
+                enhanced_staging_service.update_relationship(session_id, relationship_id, updates, user, comment)
+            )
+            if success:
+                return jsonify({"success": True, "message": "Relationship updated successfully"})
+            else:
+                return jsonify({"success": False, "error": "Failed to update relationship"}), 400
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error updating relationship {relationship_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/staging/sessions/<session_id>/entities', methods=['POST'])
+def add_enhanced_entity(session_id):
+    """Add a new entity to a session."""
+    try:
+        data = request.get_json()
+        user = data.get('user', 'web_user')
+
+        required_fields = ['name', 'type']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"success": False, "error": f"{field} is required"}), 400
+
+        from services.enhanced_staging_service import enhanced_staging_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            entity_id = loop.run_until_complete(
+                enhanced_staging_service.add_entity(session_id, data, user)
+            )
+            if entity_id:
+                return jsonify({"success": True, "entity_id": entity_id, "message": "Entity added successfully"})
+            else:
+                return jsonify({"success": False, "error": "Failed to add entity"}), 400
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error adding entity to session {session_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/staging/sessions/<session_id>/relationships', methods=['POST'])
+def add_enhanced_relationship(session_id):
+    """Add a new relationship to a session."""
+    try:
+        data = request.get_json()
+        user = data.get('user', 'web_user')
+
+        required_fields = ['source_entity_id', 'target_entity_id', 'relationship_type']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"success": False, "error": f"{field} is required"}), 400
+
+        from services.enhanced_staging_service import enhanced_staging_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            relationship_id = loop.run_until_complete(
+                enhanced_staging_service.add_relationship(session_id, data, user)
+            )
+            if relationship_id:
+                return jsonify({"success": True, "relationship_id": relationship_id, "message": "Relationship added successfully"})
+            else:
+                return jsonify({"success": False, "error": "Failed to add relationship"}), 400
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error adding relationship to session {session_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/staging/batch/approve-entities', methods=['POST'])
+def batch_approve_entities():
+    """Batch approve multiple entities."""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        entity_ids = data.get('entity_ids', [])
+        user = data.get('user', 'web_user')
+        comment = data.get('comment')
+
+        if not session_id or not entity_ids:
+            return jsonify({"success": False, "error": "session_id and entity_ids are required"}), 400
+
+        from services.enhanced_staging_service import enhanced_staging_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                enhanced_staging_service.batch_approve_entities(session_id, entity_ids, user, comment)
+            )
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error in batch approve entities: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/staging/batch/reject-entities', methods=['POST'])
+def batch_reject_entities():
+    """Batch reject multiple entities."""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        entity_ids = data.get('entity_ids', [])
+        user = data.get('user', 'web_user')
+        comment = data.get('comment')
+
+        if not session_id or not entity_ids:
+            return jsonify({"success": False, "error": "session_id and entity_ids are required"}), 400
+
+        from services.enhanced_staging_service import enhanced_staging_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                enhanced_staging_service.batch_reject_entities(session_id, entity_ids, user, comment)
+            )
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error in batch reject entities: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/staging/batch/approve-relationships', methods=['POST'])
+def batch_approve_relationships():
+    """Batch approve multiple relationships."""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        relationship_ids = data.get('relationship_ids', [])
+        user = data.get('user', 'web_user')
+        comment = data.get('comment')
+
+        if not session_id or not relationship_ids:
+            return jsonify({"success": False, "error": "session_id and relationship_ids are required"}), 400
+
+        from services.enhanced_staging_service import enhanced_staging_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                enhanced_staging_service.batch_approve_relationships(session_id, relationship_ids, user, comment)
+            )
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error in batch approve relationships: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/staging/sessions/<session_id>/validate', methods=['GET'])
+def validate_session():
+    """Validate all entities and relationships in a session."""
+    try:
+        from services.enhanced_staging_service import enhanced_staging_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(enhanced_staging_service.validate_session(session_id))
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error validating session {session_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/staging/sessions/<session_id>/quality-score', methods=['GET'])
+def get_quality_score(session_id):
+    """Get data quality score for a session."""
+    try:
+        from services.enhanced_staging_service import enhanced_staging_service
+        from services.validation_service import validation_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            session = loop.run_until_complete(enhanced_staging_service.get_session(session_id))
+            if not session:
+                return jsonify({"success": False, "error": "Session not found"}), 404
+
+            quality_score = validation_service.get_data_quality_score(session)
+            return jsonify({"success": True, "quality_score": quality_score})
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error getting quality score for session {session_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# Analytics API Endpoints
+
+@app.route('/api/analytics/dashboard', methods=['GET'])
+def get_dashboard_analytics():
+    """Get comprehensive dashboard analytics data."""
+    try:
+        from services.analytics_service import analytics_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            dashboard_data = loop.run_until_complete(analytics_service.get_dashboard_overview())
+            return jsonify(dashboard_data)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error getting dashboard analytics: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/analytics/sessions/<session_id>', methods=['GET'])
+def get_session_analytics(session_id):
+    """Get detailed analytics for a specific session."""
+    try:
+        from services.analytics_service import analytics_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            analytics_data = loop.run_until_complete(analytics_service.get_session_analytics(session_id))
+            return jsonify(analytics_data)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error getting session analytics for {session_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/analytics/activity-timeline', methods=['GET'])
+def get_activity_timeline():
+    """Get activity timeline for dashboard."""
+    try:
+        days = int(request.args.get('days', 30))
+
+        from services.analytics_service import analytics_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            timeline_data = loop.run_until_complete(analytics_service.get_activity_timeline(days))
+            return jsonify({"success": True, "timeline": timeline_data})
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error getting activity timeline: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/analytics/quality-report', methods=['GET'])
+def get_quality_report():
+    """Get comprehensive quality report."""
+    try:
+        session_id = request.args.get('session_id')
+
+        from services.analytics_service import analytics_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            quality_data = loop.run_until_complete(analytics_service.get_quality_report(session_id))
+            return jsonify(quality_data)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error getting quality report: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# Export/Import API Endpoints
+
+@app.route('/api/export/session/<session_id>', methods=['GET'])
+def export_session(session_id):
+    """Export a complete session in specified format."""
+    try:
+        format_type = request.args.get('format', 'json').lower()
+        include_audit_trail = request.args.get('include_audit_trail', 'true').lower() == 'true'
+
+        from services.export_import_service import export_import_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            export_result = loop.run_until_complete(
+                export_import_service.export_session(session_id, format_type, include_audit_trail)
+            )
+
+            if export_result["success"]:
+                response = Response(
+                    export_result["data"],
+                    mimetype=export_result["content_type"],
+                    headers={
+                        "Content-Disposition": f"attachment; filename={export_result['filename']}"
+                    }
+                )
+                return response
+            else:
+                return jsonify(export_result), 400
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error exporting session {session_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/export/entities/<session_id>', methods=['POST'])
+def export_entities(session_id):
+    """Export specific entities from a session."""
+    try:
+        data = request.get_json()
+        entity_ids = data.get('entity_ids')
+        format_type = data.get('format', 'json').lower()
+
+        from services.export_import_service import export_import_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            export_result = loop.run_until_complete(
+                export_import_service.export_entities(session_id, entity_ids, format_type)
+            )
+
+            if export_result["success"]:
+                response = Response(
+                    export_result["data"],
+                    mimetype=export_result["content_type"],
+                    headers={
+                        "Content-Disposition": f"attachment; filename={export_result['filename']}"
+                    }
+                )
+                return response
+            else:
+                return jsonify(export_result), 400
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error exporting entities from session {session_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/import/validate', methods=['POST'])
+def validate_import_file():
+    """Validate an import file without importing it."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"success": False, "error": "No file provided"}), 400
+
+        file = request.files['file']
+        format_type = request.form.get('format', 'json').lower()
+
+        # Read file data
+        file_data = file.read()
+
+        from services.export_import_service import export_import_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            validation_result = loop.run_until_complete(
+                export_import_service.validate_import_file(file_data, format_type)
+            )
+            return jsonify(validation_result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error validating import file: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/import/session/<session_id>', methods=['POST'])
+def import_data_to_session(session_id):
+    """Import data into a session."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"success": False, "error": "No file provided"}), 400
+
+        file = request.files['file']
+        format_type = request.form.get('format', 'json').lower()
+        user = request.form.get('user', 'web_user')
+        validate = request.form.get('validate', 'true').lower() == 'true'
+        merge_strategy = request.form.get('merge_strategy', 'skip')
+
+        # Read file data
+        file_data = file.read()
+
+        from services.export_import_service import export_import_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            import_result = loop.run_until_complete(
+                export_import_service.import_data(session_id, file_data, format_type, user, validate, merge_strategy)
+            )
+            return jsonify(import_result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error importing data to session {session_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/entity-management')
+def entity_management():
+    """Serve the comprehensive entity management interface."""
+    return render_template('entity_management.html')
+
+# Conflict Detection API Endpoints
+
+@app.route('/api/conflicts/session/<session_id>', methods=['GET'])
+def detect_session_conflicts(session_id):
+    """Detect conflicts in a specific session."""
+    try:
+        from services.conflict_detection_service import conflict_detection_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            conflicts_data = loop.run_until_complete(
+                conflict_detection_service.detect_session_conflicts(session_id)
+            )
+            return jsonify(conflicts_data)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error detecting conflicts in session {session_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/conflicts/cross-session', methods=['POST'])
+def detect_cross_session_conflicts():
+    """Detect conflicts across multiple sessions."""
+    try:
+        data = request.get_json()
+        session_ids = data.get('session_ids') if data else None
+
+        from services.conflict_detection_service import conflict_detection_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            conflicts_data = loop.run_until_complete(
+                conflict_detection_service.detect_cross_session_conflicts(session_ids)
+            )
+            return jsonify(conflicts_data)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error detecting cross-session conflicts: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/conflicts/resolve', methods=['POST'])
+def resolve_conflict():
+    """Resolve a specific conflict."""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        conflict_id = data.get('conflict_id')
+        resolution_action = data.get('action')
+        user = data.get('user', 'web_user')
+
+        if not all([session_id, conflict_id, resolution_action]):
+            return jsonify({
+                "success": False,
+                "error": "session_id, conflict_id, and action are required"
+            }), 400
+
+        from services.conflict_detection_service import conflict_detection_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            resolution_result = loop.run_until_complete(
+                conflict_detection_service.resolve_conflict(session_id, conflict_id, resolution_action, user)
+            )
+            return jsonify(resolution_result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error resolving conflict: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# Real-time Validation API Endpoints
+
+@app.route('/api/validation/entity', methods=['POST'])
+def validate_entity_real_time():
+    """Perform real-time validation on entity data."""
+    try:
+        data = request.get_json()
+        entity_data = data.get('entity_data', {})
+        session_id = data.get('session_id')
+
+        from services.validation_service import validation_service
+
+        # Get session entities for duplicate checking if session_id provided
+        session_entities = None
+        if session_id:
+            from services.enhanced_staging_service import enhanced_staging_service
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            try:
+                session = loop.run_until_complete(enhanced_staging_service.get_session(session_id))
+                if session:
+                    session_entities = session.entities
+            finally:
+                loop.close()
+
+        validation_result = validation_service.validate_entity_real_time(entity_data, session_entities)
+        return jsonify({"success": True, "validation": validation_result})
+
+    except Exception as e:
+        logger.error(f"Error in real-time entity validation: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/validation/relationship', methods=['POST'])
+def validate_relationship_real_time():
+    """Perform real-time validation on relationship data."""
+    try:
+        data = request.get_json()
+        relationship_data = data.get('relationship_data', {})
+        session_id = data.get('session_id')
+
+        from services.validation_service import validation_service
+
+        # Get session entities for reference validation if session_id provided
+        session_entities = None
+        if session_id:
+            from services.enhanced_staging_service import enhanced_staging_service
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            try:
+                session = loop.run_until_complete(enhanced_staging_service.get_session(session_id))
+                if session:
+                    session_entities = session.entities
+            finally:
+                loop.close()
+
+        validation_result = validation_service.validate_relationship_real_time(relationship_data, session_entities)
+        return jsonify({"success": True, "validation": validation_result})
+
+    except Exception as e:
+        logger.error(f"Error in real-time relationship validation: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/validation/batch', methods=['POST'])
+def validate_batch_data():
+    """Validate batch data for import operations."""
+    try:
+        data = request.get_json()
+        entities_data = data.get('entities', [])
+        relationships_data = data.get('relationships', [])
+
+        from services.validation_service import validation_service
+
+        validation_result = validation_service.validate_batch_data(entities_data, relationships_data)
+        return jsonify({"success": True, "validation": validation_result})
+
+    except Exception as e:
+        logger.error(f"Error in batch validation: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# Document Ingestion API Endpoints
+
+@app.route('/api/ingestion/upload', methods=['POST'])
+def upload_document():
+    """Upload a document for processing."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"success": False, "error": "No file provided"}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"success": False, "error": "No file selected"}), 400
+
+        # Get form data
+        user_id = request.form.get('user_id', 'web_user')
+        workflow_id = request.form.get('workflow_id')
+        priority = request.form.get('priority', 'normal')
+
+        # Get metadata
+        metadata = {}
+        if request.form.get('title'):
+            metadata['title'] = request.form.get('title')
+        if request.form.get('source'):
+            metadata['source'] = request.form.get('source')
+        if request.form.get('description'):
+            metadata['description'] = request.form.get('description')
+
+        # Get processing config
+        processing_config = {}
+        if request.form.get('auto_approve_threshold'):
+            processing_config['auto_approve_threshold'] = float(request.form.get('auto_approve_threshold'))
+        if request.form.get('chunk_size'):
+            processing_config['chunk_size'] = int(request.form.get('chunk_size'))
+
+        # Read file data
+        file_data = file.read()
+
+        from services.document_ingestion_service import document_ingestion_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                document_ingestion_service.upload_document(
+                    file_data=file_data,
+                    filename=file.filename,
+                    mime_type=file.content_type or 'application/octet-stream',
+                    user_id=user_id,
+                    metadata=metadata,
+                    processing_config=processing_config,
+                    priority=priority
+                )
+            )
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error uploading document: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/ingestion/jobs/<job_id>', methods=['GET'])
+def get_job_status(job_id):
+    """Get the status of a processing job."""
+    try:
+        from services.document_ingestion_service import document_ingestion_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                document_ingestion_service.get_job_status(job_id)
+            )
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error getting job status {job_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/ingestion/jobs', methods=['GET'])
+def get_all_jobs():
+    """Get all processing jobs with optional filtering."""
+    try:
+        user_id = request.args.get('user_id')
+        status = request.args.get('status')
+
+        from services.document_ingestion_service import document_ingestion_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                document_ingestion_service.get_all_jobs(user_id, status)
+            )
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error getting all jobs: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/ingestion/jobs/<job_id>/cancel', methods=['POST'])
+def cancel_job(job_id):
+    """Cancel a processing job."""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id', 'web_user')
+
+        from services.document_ingestion_service import document_ingestion_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                document_ingestion_service.cancel_job(job_id, user_id)
+            )
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error cancelling job {job_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/ingestion/jobs/<job_id>/reprocess', methods=['POST'])
+def reprocess_document(job_id):
+    """Reprocess a failed or completed document."""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id', 'web_user')
+        new_config = data.get('processing_config')
+
+        from services.document_ingestion_service import document_ingestion_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                document_ingestion_service.reprocess_document(job_id, user_id, new_config)
+            )
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error reprocessing job {job_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# Workflow Orchestration API Endpoints
+
+@app.route('/api/workflows', methods=['POST'])
+def create_workflow():
+    """Create a new workflow."""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id', 'web_user')
+        name = data.get('name', 'Untitled Workflow')
+        description = data.get('description', '')
+        config = data.get('config', {})
+
+        from services.workflow_orchestration_service import workflow_orchestration_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                workflow_orchestration_service.create_workflow(user_id, name, description, config)
+            )
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error creating workflow: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/workflows', methods=['GET'])
+def get_all_workflows():
+    """Get all workflows for a user."""
+    try:
+        user_id = request.args.get('user_id', 'web_user')
+        status = request.args.get('status')
+
+        from services.workflow_orchestration_service import workflow_orchestration_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                workflow_orchestration_service.get_all_workflows(user_id, status)
+            )
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error getting workflows: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/workflows/<workflow_id>', methods=['GET'])
+def get_workflow_status(workflow_id):
+    """Get the status of a workflow."""
+    try:
+        user_id = request.args.get('user_id', 'web_user')
+
+        from services.workflow_orchestration_service import workflow_orchestration_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                workflow_orchestration_service.get_workflow_status(workflow_id, user_id)
+            )
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error getting workflow status {workflow_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/workflows/<workflow_id>/upload', methods=['POST'])
+def upload_documents_to_workflow(workflow_id):
+    """Upload documents to a workflow."""
+    try:
+        user_id = request.form.get('user_id', 'web_user')
+
+        # Handle multiple files
+        documents = []
+        for key in request.files:
+            file = request.files[key]
+            if file.filename:
+                documents.append({
+                    "file_data": file.read(),
+                    "filename": file.filename,
+                    "mime_type": file.content_type or 'application/octet-stream',
+                    "metadata": {
+                        "title": request.form.get(f'{key}_title', file.filename),
+                        "description": request.form.get(f'{key}_description', '')
+                    }
+                })
+
+        from services.workflow_orchestration_service import workflow_orchestration_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                workflow_orchestration_service.upload_documents_to_workflow(workflow_id, documents, user_id)
+            )
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error uploading documents to workflow {workflow_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/workflows/<workflow_id>/approve', methods=['POST'])
+def approve_workflow_entities(workflow_id):
+    """Approve entities in workflow for Neo4j ingestion."""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id', 'web_user')
+        approval_config = data.get('approval_config', {})
+
+        from services.workflow_orchestration_service import workflow_orchestration_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                workflow_orchestration_service.approve_workflow_entities(workflow_id, user_id, approval_config)
+            )
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error approving workflow entities {workflow_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/workflows/<workflow_id>/ingest', methods=['POST'])
+def ingest_workflow_to_neo4j(workflow_id):
+    """Ingest approved entities from workflow to Neo4j."""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id', 'web_user')
+
+        from services.workflow_orchestration_service import workflow_orchestration_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                workflow_orchestration_service.ingest_workflow_to_neo4j(workflow_id, user_id)
+            )
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error ingesting workflow {workflow_id} to Neo4j: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/workflows/<workflow_id>/cancel', methods=['POST'])
+def cancel_workflow(workflow_id):
+    """Cancel a workflow."""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id', 'web_user')
+
+        from services.workflow_orchestration_service import workflow_orchestration_service
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                workflow_orchestration_service.cancel_workflow(workflow_id, user_id)
+            )
+            return jsonify(result)
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error cancelling workflow {workflow_id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# WebSocket endpoint for real-time updates
+@app.route('/ws')
+def websocket_endpoint():
+    """WebSocket endpoint for real-time updates."""
+    try:
+        from services.websocket_service import websocket_manager
+        import uuid
+
+        user_id = request.args.get('user_id', 'anonymous')
+        connection_id = str(uuid.uuid4())
+
+        @socketio.on('connect')
+        def handle_connect():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(
+                    websocket_manager.connect(request.sid, user_id, connection_id)
+                )
+            finally:
+                loop.close()
+
+        @socketio.on('disconnect')
+        def handle_disconnect():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(
+                    websocket_manager.disconnect(connection_id)
+                )
+            finally:
+                loop.close()
+
+        @socketio.on('message')
+        def handle_message(data):
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(
+                    websocket_manager.handle_message(connection_id, data)
+                )
+            finally:
+                loop.close()
+
+        return "WebSocket endpoint configured"
+
+    except Exception as e:
+        logger.error(f"Error setting up WebSocket endpoint: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/document-ingestion')
+def document_ingestion():
+    """Serve the document ingestion interface."""
+    return render_template('document_ingestion.html')
+
+@app.route('/workflow-dashboard')
+def workflow_dashboard():
+    """Serve the workflow dashboard interface."""
+    return render_template('workflow_dashboard.html')
+
+@app.route('/dashboard')
+def dashboard():
+    """Serve the entity management dashboard."""
+    return render_template('dashboard.html')
+
 @app.errorhandler(404)
 def not_found(error):
     """Handle 404 errors."""
@@ -3759,9 +4914,44 @@ def internal_error(error):
     logger.error(f"Internal error: {error}")
     return jsonify({"error": "Internal server error"}), 500
 
+async def initialize_ingestion_services():
+    """Initialize document ingestion services."""
+    try:
+        from services.document_ingestion_service import document_ingestion_service
+        from services.workflow_orchestration_service import workflow_orchestration_service
+        from services.websocket_service import websocket_manager
+
+        # Initialize services
+        await document_ingestion_service.initialize()
+        await workflow_orchestration_service.initialize()
+        await websocket_manager.start()
+
+        logger.info("Document ingestion services initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing ingestion services: {e}")
+
+def run_async_init():
+    """Run async initialization in a separate thread."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(initialize_ingestion_services())
+    except Exception as e:
+        logger.error(f"Error in async initialization: {e}")
+    finally:
+        loop.close()
+
 if __name__ == '__main__':
+    # Initialize ingestion services in background
+    init_thread = threading.Thread(target=run_async_init)
+    init_thread.daemon = True
+    init_thread.start()
+
     print(f"🌐 Starting Web UI for Agentic RAG")
     print(f"📡 API URL: {API_BASE_URL}")
+    print(f"📄 Document Ingestion: http://{WEB_UI_HOST}:{WEB_UI_PORT}/document-ingestion")
+    print(f"🔄 Workflow Dashboard: http://{WEB_UI_HOST}:{WEB_UI_PORT}/workflow-dashboard")
+    print(f"📊 Entity Management: http://{WEB_UI_HOST}:{WEB_UI_PORT}/entity-management")
     print(f"🚀 Web UI URL: http://{WEB_UI_HOST}:{WEB_UI_PORT}")
 
     app.run(

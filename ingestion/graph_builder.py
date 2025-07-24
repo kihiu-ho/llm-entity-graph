@@ -133,6 +133,147 @@ class GraphBuilder:
             await self.graph_client.close()
             self._initialized = False
     
+    async def stage_document_entities(
+        self,
+        chunks: List[DocumentChunk],
+        document_title: str,
+        document_source: str,
+        document_metadata: Optional[Dict[str, Any]] = None,
+        use_staging: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Extract entities from document and save to staging for review.
+
+        Args:
+            chunks: List of document chunks
+            document_title: Title of the document
+            document_source: Source of the document
+            document_metadata: Additional metadata
+            use_staging: Whether to use staging (True) or direct ingestion (False)
+
+        Returns:
+            Processing results including staging session ID
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        if not chunks:
+            return {"entities_extracted": 0, "relationships_extracted": 0, "errors": []}
+
+        logger.info(f"Extracting entities from {len(chunks)} chunks for document: {document_title}")
+        logger.info(f"Document source: {document_source}")
+        logger.info(f"Using staging: {use_staging}")
+
+        # Extract entities from the document
+        enriched_chunks = await self.extract_entities_from_document(
+            chunks,
+            extract_companies=True,
+            extract_technologies=False,
+            extract_people=True,
+            extract_financial_entities=True,
+            extract_corporate_roles=True,
+            extract_ownership=True,
+            extract_transactions=True,
+            extract_personal_connections=True,
+            use_llm=True,
+            use_llm_for_companies=True,
+            use_llm_for_technologies=False,
+            use_llm_for_people=True,
+            use_llm_for_financial_entities=True,
+            use_llm_for_corporate_roles=True,
+            use_llm_for_ownership=True,
+            use_llm_for_transactions=True,
+            use_llm_for_personal_connections=True
+        )
+
+        # Collect all entities and relationships
+        all_entities = []
+        all_relationships = []
+
+        for chunk in enriched_chunks:
+            if hasattr(chunk, 'entities') and chunk.entities:
+                # Process entities from chunk
+                entities_data = chunk.entities
+
+                # Extract people
+                for person in entities_data.get('people', []):
+                    all_entities.append({
+                        'id': self._generate_entity_id(),
+                        'name': person,
+                        'type': 'Person',
+                        'attributes': {
+                            'entity_type': 'person',
+                            'source_chunk': chunk.index
+                        },
+                        'confidence': 0.8,
+                        'status': 'pending',
+                        'edited': False,
+                        'created_at': datetime.now().isoformat(),
+                        'source_text': chunk.content[:200] + '...' if len(chunk.content) > 200 else chunk.content
+                    })
+
+                # Extract companies
+                for company in entities_data.get('companies', []):
+                    all_entities.append({
+                        'id': self._generate_entity_id(),
+                        'name': company,
+                        'type': 'Company',
+                        'attributes': {
+                            'entity_type': 'company',
+                            'source_chunk': chunk.index
+                        },
+                        'confidence': 0.8,
+                        'status': 'pending',
+                        'edited': False,
+                        'created_at': datetime.now().isoformat(),
+                        'source_text': chunk.content[:200] + '...' if len(chunk.content) > 200 else chunk.content
+                    })
+
+                # Extract corporate roles
+                corporate_roles = entities_data.get('corporate_roles', {})
+                for role_type, roles in corporate_roles.items():
+                    for role in roles:
+                        if isinstance(role, dict) and 'name' in role:
+                            all_entities.append({
+                                'id': self._generate_entity_id(),
+                                'name': role['name'],
+                                'type': 'Person',
+                                'attributes': {
+                                    'entity_type': 'person',
+                                    'role_type': role_type,
+                                    'position': role.get('position', ''),
+                                    'company': role.get('company', ''),
+                                    'source_chunk': chunk.index
+                                },
+                                'confidence': 0.9,
+                                'status': 'pending',
+                                'edited': False,
+                                'created_at': datetime.now().isoformat(),
+                                'source_text': chunk.content[:200] + '...' if len(chunk.content) > 200 else chunk.content
+                            })
+
+        if use_staging:
+            # Save to staging
+            session_id = await self._save_to_staging(
+                document_title,
+                document_source,
+                all_entities,
+                all_relationships,
+                document_metadata
+            )
+
+            return {
+                "session_id": session_id,
+                "entities_extracted": len(all_entities),
+                "relationships_extracted": len(all_relationships),
+                "status": "staged_for_review"
+            }
+        else:
+            # Use original direct ingestion method
+            return await self.add_document_to_graph(
+                enriched_chunks, document_title, document_source, document_metadata
+            )
+
     async def add_document_to_graph(
         self,
         chunks: List[DocumentChunk],
@@ -1952,6 +2093,85 @@ IMPORTANT:
         logger.warning("Clearing knowledge graph...")
         await self.graph_client.clear_graph()
         logger.info("Knowledge graph cleared")
+
+    def _generate_entity_id(self) -> str:
+        """Generate a unique entity ID."""
+        import uuid
+        return str(uuid.uuid4())
+
+    async def _save_to_staging(
+        self,
+        document_title: str,
+        document_source: str,
+        entities: List[Dict],
+        relationships: List[Dict],
+        document_metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Save extracted entities and relationships to staging for review.
+
+        Args:
+            document_title: Title of the document
+            document_source: Source of the document
+            entities: List of extracted entities
+            relationships: List of extracted relationships
+            document_metadata: Additional metadata
+
+        Returns:
+            Session ID for the staging session
+        """
+        import uuid
+        import json
+        from pathlib import Path
+        from datetime import datetime
+
+        # Generate session ID
+        session_id = str(uuid.uuid4())
+
+        # Create staging directory if it doesn't exist
+        staging_dir = Path('staging/data')
+        staging_dir.mkdir(parents=True, exist_ok=True)
+
+        # Calculate statistics
+        total_entities = len(entities)
+        total_relationships = len(relationships)
+        approved_entities = len([e for e in entities if e.get('status') == 'approved'])
+        approved_relationships = len([r for r in relationships if r.get('status') == 'approved'])
+        rejected_entities = len([e for e in entities if e.get('status') == 'rejected'])
+        rejected_relationships = len([r for r in relationships if r.get('status') == 'rejected'])
+        pending_entities = len([e for e in entities if e.get('status') == 'pending'])
+        pending_relationships = len([r for r in relationships if r.get('status') == 'pending'])
+
+        # Create staging session data
+        session_data = {
+            'session_id': session_id,
+            'document_title': document_title,
+            'document_source': document_source,
+            'created_at': datetime.now().isoformat(),
+            'status': 'pending_review',
+            'entities': entities,
+            'relationships': relationships,
+            'statistics': {
+                'total_entities': total_entities,
+                'total_relationships': total_relationships,
+                'approved_entities': approved_entities,
+                'approved_relationships': approved_relationships,
+                'rejected_entities': rejected_entities,
+                'rejected_relationships': rejected_relationships,
+                'pending_entities': pending_entities,
+                'pending_relationships': pending_relationships
+            },
+            'metadata': document_metadata or {}
+        }
+
+        # Save to staging file
+        staging_file = staging_dir / f'{session_id}.json'
+        with open(staging_file, 'w', encoding='utf-8') as f:
+            json.dump(session_data, f, indent=2, ensure_ascii=False)
+
+        logger.info(f"Saved {total_entities} entities and {total_relationships} relationships to staging session: {session_id}")
+
+        return session_id
 
 
 # All rule-based extraction methods removed - LLM-only extraction now used

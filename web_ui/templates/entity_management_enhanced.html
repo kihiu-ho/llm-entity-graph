@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Entity Management System - Agentic RAG</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/entity-management.css') }}" rel="stylesheet">
+    <style>
+        .entity-management-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f8f9fa;
+            min-height: 100vh;
+        }
+        
+        .management-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        
+        .management-header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2.5em;
+            font-weight: 700;
+        }
+        
+        .management-header p {
+            margin: 0;
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .control-panel {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .control-row {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .control-group label {
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.9em;
+        }
+        
+        .control-group select,
+        .control-group input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.9em;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-left: auto;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .data-table-container {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+        
+        .table-header {
+            background: #f8f9fa;
+            padding: 20px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: between;
+            align-items: center;
+        }
+        
+        .table-title {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: #495057;
+            margin: 0;
+        }
+        
+        .table-stats {
+            display: flex;
+            gap: 20px;
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+        
+        .data-table th,
+        .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .data-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .data-table th.sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .data-table th.sortable:hover {
+            background: #e9ecef;
+        }
+        
+        .data-table tbody tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-approved {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-rejected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-edited {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .confidence-bar {
+            width: 60px;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .confidence-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        
+        .confidence-high {
+            background: #28a745;
+        }
+        
+        .confidence-medium {
+            background: #ffc107;
+        }
+        
+        .confidence-low {
+            background: #dc3545;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .action-btn {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8em;
+            transition: all 0.2s ease;
+        }
+        
+        .action-btn:hover {
+            transform: scale(1.05);
+        }
+        
+        .edit-btn {
+            background: #007bff;
+            color: white;
+        }
+        
+        .approve-btn {
+            background: #28a745;
+            color: white;
+        }
+        
+        .reject-btn {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .delete-btn {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .checkbox-cell {
+            width: 40px;
+            text-align: center;
+        }
+        
+        .checkbox-cell input[type="checkbox"] {
+            transform: scale(1.2);
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .loading-spinner {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1001;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .modal-title {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: #495057;
+            margin: 0;
+        }
+        
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+        
+        .close:hover {
+            color: #000;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1em;
+            box-sizing: border-box;
+        }
+        
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        
+        .validation-feedback {
+            margin-top: 5px;
+            font-size: 0.9em;
+        }
+        
+        .validation-error {
+            color: #dc3545;
+        }
+        
+        .validation-warning {
+            color: #ffc107;
+        }
+        
+        .validation-suggestion {
+            color: #17a2b8;
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-weight: 600;
+            color: #6c757d;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+        
+        .tab.active {
+            color: #007bff;
+            border-bottom-color: #007bff;
+        }
+        
+        .tab:hover {
+            color: #007bff;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        @media (max-width: 768px) {
+            .entity-management-container {
+                padding: 10px;
+            }
+            
+            .control-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .btn-group {
+                margin-left: 0;
+                margin-top: 15px;
+            }
+            
+            .data-table {
+                font-size: 0.8em;
+            }
+            
+            .data-table th,
+            .data-table td {
+                padding: 8px;
+            }
+            
+            .modal-content {
+                margin: 10% auto;
+                padding: 20px;
+                width: 95%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="entity-management-container">
+        <!-- Header -->
+        <div class="management-header">
+            <h1><i class="fas fa-cogs"></i> Entity Management System</h1>
+            <p>Comprehensive entity and relationship management with real-time validation and conflict detection</p>
+        </div>
+        
+        <!-- Control Panel -->
+        <div class="control-panel">
+            <div class="control-row">
+                <div class="control-group">
+                    <label for="sessionSelect">Session</label>
+                    <select id="sessionSelect">
+                        <option value="">Select a session...</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="statusFilter">Status Filter</label>
+                    <select id="statusFilter">
+                        <option value="">All Statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="edited">Edited</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="typeFilter">Type Filter</label>
+                    <select id="typeFilter">
+                        <option value="">All Types</option>
+                        <option value="Person">Person</option>
+                        <option value="Company">Company</option>
+                        <option value="Organization">Organization</option>
+                        <option value="Location">Location</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="searchInput">Search</label>
+                    <input type="text" id="searchInput" placeholder="Search entities...">
+                </div>
+                
+                <div class="btn-group">
+                    <button class="btn btn-primary" id="addEntityBtn">
+                        <i class="fas fa-plus"></i> Add Entity
+                    </button>
+                    <button class="btn btn-success" id="addRelationshipBtn">
+                        <i class="fas fa-link"></i> Add Relationship
+                    </button>
+                    <button class="btn btn-warning" id="detectConflictsBtn">
+                        <i class="fas fa-exclamation-triangle"></i> Detect Conflicts
+                    </button>
+                    <button class="btn btn-secondary" id="exportBtn">
+                        <i class="fas fa-download"></i> Export
+                    </button>
+                    <button class="btn btn-secondary" id="importBtn">
+                        <i class="fas fa-upload"></i> Import
+                    </button>
+                </div>
+            </div>
+            
+            <div class="control-row">
+                <div class="btn-group">
+                    <button class="btn btn-success" id="batchApproveBtn" disabled>
+                        <i class="fas fa-check"></i> Approve Selected
+                    </button>
+                    <button class="btn btn-danger" id="batchRejectBtn" disabled>
+                        <i class="fas fa-times"></i> Reject Selected
+                    </button>
+                    <button class="btn btn-secondary" id="batchDeleteBtn" disabled>
+                        <i class="fas fa-trash"></i> Delete Selected
+                    </button>
+                </div>
+                
+                <div class="table-stats" id="tableStats">
+                    <span>Total: <strong id="totalCount">0</strong></span>
+                    <span>Selected: <strong id="selectedCount">0</strong></span>
+                    <span>Pending: <strong id="pendingCount">0</strong></span>
+                    <span>Approved: <strong id="approvedCount">0</strong></span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main Content Tabs -->
+        <div class="tabs">
+            <button class="tab active" data-tab="entities">
+                <i class="fas fa-users"></i> Entities
+            </button>
+            <button class="tab" data-tab="relationships">
+                <i class="fas fa-project-diagram"></i> Relationships
+            </button>
+            <button class="tab" data-tab="conflicts">
+                <i class="fas fa-exclamation-triangle"></i> Conflicts
+            </button>
+            <button class="tab" data-tab="analytics">
+                <i class="fas fa-chart-bar"></i> Analytics
+            </button>
+        </div>
+        
+        <!-- Entities Tab -->
+        <div class="tab-content active" id="entitiesTab">
+            <div class="data-table-container">
+                <div class="table-header">
+                    <h3 class="table-title">Entities</h3>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table class="data-table" id="entitiesTable">
+                        <thead>
+                            <tr>
+                                <th class="checkbox-cell">
+                                    <input type="checkbox" id="selectAllEntities">
+                                </th>
+                                <th class="sortable" data-sort="name">Name <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="type">Type <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="status">Status <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="confidence">Confidence <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="created_at">Created <i class="fas fa-sort"></i></th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="entitiesTableBody">
+                            <!-- Entity rows will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Relationships Tab -->
+        <div class="tab-content" id="relationshipsTab">
+            <div class="data-table-container">
+                <div class="table-header">
+                    <h3 class="table-title">Relationships</h3>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table class="data-table" id="relationshipsTable">
+                        <thead>
+                            <tr>
+                                <th class="checkbox-cell">
+                                    <input type="checkbox" id="selectAllRelationships">
+                                </th>
+                                <th class="sortable" data-sort="source">Source Entity <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="type">Relationship Type <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="target">Target Entity <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="status">Status <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="confidence">Confidence <i class="fas fa-sort"></i></th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="relationshipsTableBody">
+                            <!-- Relationship rows will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Conflicts Tab -->
+        <div class="tab-content" id="conflictsTab">
+            <div class="data-table-container">
+                <div class="table-header">
+                    <h3 class="table-title">Detected Conflicts</h3>
+                    <button class="btn btn-warning" id="refreshConflictsBtn">
+                        <i class="fas fa-sync"></i> Refresh
+                    </button>
+                </div>
+                <div id="conflictsContent">
+                    <!-- Conflicts will be populated here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Analytics Tab -->
+        <div class="tab-content" id="analyticsTab">
+            <div class="data-table-container">
+                <div class="table-header">
+                    <h3 class="table-title">Session Analytics</h3>
+                </div>
+                <div id="analyticsContent">
+                    <!-- Analytics will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Loading...</p>
+        </div>
+    </div>
+    
+    <!-- Entity Edit Modal -->
+    <div id="entityModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="entityModalTitle">Add Entity</h2>
+                <span class="close" id="entityModalClose">&times;</span>
+            </div>
+            <form id="entityForm">
+                <div class="form-group">
+                    <label for="entityName">Name *</label>
+                    <input type="text" id="entityName" name="name" required>
+                    <div class="validation-feedback" id="entityNameFeedback"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="entityType">Type *</label>
+                    <select id="entityType" name="type" required>
+                        <option value="">Select type...</option>
+                        <option value="Person">Person</option>
+                        <option value="Company">Company</option>
+                        <option value="Organization">Organization</option>
+                        <option value="Location">Location</option>
+                        <option value="Technology">Technology</option>
+                    </select>
+                    <div class="validation-feedback" id="entityTypeFeedback"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="entityConfidence">Confidence</label>
+                    <input type="number" id="entityConfidence" name="confidence" min="0" max="1" step="0.01" value="0.8">
+                    <div class="validation-feedback" id="entityConfidenceFeedback"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="entitySourceText">Source Text</label>
+                    <textarea id="entitySourceText" name="source_text" placeholder="Original text where this entity was found..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save Entity
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="entityCancelBtn">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Relationship Edit Modal -->
+    <div id="relationshipModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="relationshipModalTitle">Add Relationship</h2>
+                <span class="close" id="relationshipModalClose">&times;</span>
+            </div>
+            <form id="relationshipForm">
+                <div class="form-group">
+                    <label for="sourceEntitySelect">Source Entity *</label>
+                    <select id="sourceEntitySelect" name="source_entity_id" required>
+                        <option value="">Select source entity...</option>
+                    </select>
+                    <div class="validation-feedback" id="sourceEntityFeedback"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="relationshipType">Relationship Type *</label>
+                    <select id="relationshipType" name="relationship_type" required>
+                        <option value="">Select relationship type...</option>
+                        <option value="CEO_OF">CEO Of</option>
+                        <option value="CHAIRMAN_OF">Chairman Of</option>
+                        <option value="DIRECTOR_OF">Director Of</option>
+                        <option value="EMPLOYEE_OF">Employee Of</option>
+                        <option value="SHAREHOLDER_OF">Shareholder Of</option>
+                        <option value="SUBSIDIARY_OF">Subsidiary Of</option>
+                        <option value="PARTNER_OF">Partner Of</option>
+                        <option value="RELATED_TO">Related To</option>
+                    </select>
+                    <div class="validation-feedback" id="relationshipTypeFeedback"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="targetEntitySelect">Target Entity *</label>
+                    <select id="targetEntitySelect" name="target_entity_id" required>
+                        <option value="">Select target entity...</option>
+                    </select>
+                    <div class="validation-feedback" id="targetEntityFeedback"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="relationshipConfidence">Confidence</label>
+                    <input type="number" id="relationshipConfidence" name="confidence" min="0" max="1" step="0.01" value="0.8">
+                    <div class="validation-feedback" id="relationshipConfidenceFeedback"></div>
+                </div>
+                
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save Relationship
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="relationshipCancelBtn">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Import Modal -->
+    <div id="importModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Import Data</h2>
+                <span class="close" id="importModalClose">&times;</span>
+            </div>
+            <form id="importForm">
+                <div class="form-group">
+                    <label for="importFile">Select File *</label>
+                    <input type="file" id="importFile" name="file" accept=".json,.csv,.xlsx" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="importFormat">Format</label>
+                    <select id="importFormat" name="format">
+                        <option value="json">JSON</option>
+                        <option value="csv">CSV</option>
+                        <option value="excel">Excel</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="mergeStrategy">Merge Strategy</label>
+                    <select id="mergeStrategy" name="merge_strategy">
+                        <option value="skip">Skip Duplicates</option>
+                        <option value="update">Update Existing</option>
+                        <option value="replace">Replace All</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="validateImport" name="validate" checked>
+                        Validate data before import
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-upload"></i> Import Data
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="importCancelBtn">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/entity-table-editor.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/validation-engine.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/entity-management-main.js') }}"></script>
+</body>
+</html>
